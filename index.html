@@ -2,57 +2,412 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#f6f7ff" />
-  <title>이동식 OX 게임</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <title>Move OX</title>
   <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./style.css" />
+  <style>
+    :root{
+      --bg:#0f172a;--panel:#111827;--panel2:#1f2937;--line:#334155;
+      --text:#f8fafc;--muted:#94a3b8;--o:#38bdf8;--x:#fb7185;--ok:#22c55e;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;min-height:100vh;background:linear-gradient(160deg,#0f172a,#111827 60%,#172554);
+      color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      display:flex;justify-content:center;
+    }
+    .app{width:min(100%,520px);padding:calc(18px + env(safe-area-inset-top)) 16px calc(22px + env(safe-area-inset-bottom))}
+    .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+    h1{font-size:28px;margin:0}.badge{font-size:12px;color:#cbd5e1;background:#1e293b;border:1px solid #334155;padding:7px 10px;border-radius:999px}
+    .card{background:rgba(17,24,39,.94);border:1px solid #334155;border-radius:20px;padding:16px;box-shadow:0 14px 40px rgba(0,0,0,.28);margin-bottom:14px}
+    label{display:block;font-size:13px;color:var(--muted);margin:0 0 7px}
+    input{width:100%;border:1px solid #475569;background:#0f172a;color:white;border-radius:13px;padding:14px;font-size:16px;outline:none}
+    input:focus{border-color:#60a5fa}
+    .row{display:flex;gap:10px}.row>*{flex:1}
+    button{border:0;border-radius:14px;padding:14px 12px;font-size:16px;font-weight:800;cursor:pointer}
+    .primary{background:#2563eb;color:white}.secondary{background:#334155;color:white}.danger{background:#be123c;color:white}
+    .ghost{background:#1e293b;color:#cbd5e1;border:1px solid #334155}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    .hidden{display:none!important}
+    .roomline{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .roomcode{font-size:30px;font-weight:900;letter-spacing:6px;color:#fde68a}
+    .status{margin-top:10px;color:#cbd5e1;font-size:14px;line-height:1.5}
+    .players{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px}
+    .player{background:#0f172a;border:1px solid #334155;border-radius:16px;padding:12px;text-align:center}
+    .player.active{outline:2px solid #facc15}
+    .mark{font-size:28px;font-weight:900}.mark.o{color:var(--o)}.mark.x{color:var(--x)}
+    .vs{color:#64748b;font-weight:900}
+    .score{font-size:20px;font-weight:900;margin-top:4px}
+    .board{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:14px}
+    .cell{
+      aspect-ratio:1;background:#0b1220;border:1px solid #334155;border-radius:18px;
+      display:flex;align-items:center;justify-content:center;font-size:54px;font-weight:900;
+      transition:.15s transform,.15s background
+    }
+    .cell:active{transform:scale(.97)}
+    .cell.o{color:var(--o)}.cell.x{color:var(--x)}
+    .cell.selected{background:#1e3a8a;outline:3px solid #60a5fa}
+    .cell.movable{box-shadow:inset 0 0 0 2px rgba(250,204,21,.35)}
+    .message{text-align:center;margin:14px 0 0;font-weight:800;min-height:24px}
+    .hint{text-align:center;color:var(--muted);font-size:13px;margin-top:6px}
+    .footer{color:#64748b;text-align:center;font-size:12px;margin-top:12px}
+    .error{background:#450a0a;border:1px solid #991b1b;color:#fecaca;padding:12px;border-radius:14px;font-size:13px;line-height:1.5;margin-bottom:14px}
+  </style>
 </head>
 <body>
-  <main class="app">
-    <section id="lobby" class="panel lobby">
-      <div class="logo">OX</div>
-      <h1>이동식 OX 게임</h1>
-      <p>3개만 놓고, 4번째부터 기존 말을 이동하세요.</p>
-      <button id="localBtn" class="primary">한 휴대폰에서 2인 플레이</button>
-      <button id="installBtn" class="install hidden">이 휴대폰에 설치</button>
-      <p class="guide">X와 O가 한 화면에서 번갈아 진행합니다.</p>
-    </section>
+<div class="app">
+  <div class="top">
+    <h1>Move OX</h1>
+    <div class="badge">Firebase 실시간 대전</div>
+  </div>
 
-    <section id="game" class="panel game hidden">
-      <header>
-        <div>
-          <h1>이동식 OX 게임</h1>
-          <p>한 휴대폰 2인 대전</p>
-        </div>
-        <button id="resetScoresBtn" class="icon-btn" title="점수 초기화">↻</button>
-      </header>
+  <div id="errorBox" class="error hidden"></div>
 
-      <section class="scoreboard">
-        <div class="score x-score"><span>플레이어 X</span><b id="xScore">0</b><small>승</small></div>
-        <div class="round-info"><span id="status">X 차례</span><small>번갈아 플레이</small></div>
-        <div class="draw-score"><small>무승부</small><b id="drawScore">0</b></div>
-        <div class="score o-score"><span>플레이어 O</span><b id="oScore">0</b><small>승</small></div>
-      </section>
+  <section id="lobby" class="card">
+    <label for="nickname">닉네임</label>
+    <input id="nickname" maxlength="12" placeholder="예: 정식" />
+    <div style="height:10px"></div>
+    <div class="row">
+      <button id="createBtn" class="primary">방 만들기</button>
+      <button id="joinShowBtn" class="secondary">방 참가</button>
+    </div>
+    <div id="joinArea" class="hidden" style="margin-top:12px">
+      <label for="roomInput">4자리 방 번호</label>
+      <input id="roomInput" inputmode="numeric" maxlength="4" placeholder="예: 4827" />
+      <div style="height:10px"></div>
+      <button id="joinBtn" class="primary" style="width:100%">입장하기</button>
+    </div>
+  </section>
 
-      <section id="board" class="board" aria-label="게임판"></section>
-      <div class="guide" id="guide">빈칸을 선택하세요.</div>
-      <button id="nextRoundBtn" class="primary hidden">다음 경기</button>
-      <button id="homeBtn" class="secondary">처음 화면</button>
+  <section id="roomCard" class="card hidden">
+    <div class="roomline">
+      <div>
+        <div style="font-size:13px;color:#94a3b8">방 번호</div>
+        <div id="roomCode" class="roomcode">----</div>
+      </div>
+      <button id="copyBtn" class="ghost">복사</button>
+    </div>
+    <div id="roomStatus" class="status">상대방을 기다리는 중입니다.</div>
+  </section>
 
-      <details>
-        <summary>게임 규칙</summary>
-        <p>각자 빈칸에 말을 3개까지 놓습니다. 이후에는 자신의 말을 선택한 다음 빈칸으로 이동합니다. 가로·세로·대각선으로 3개를 먼저 연결하면 승리합니다.</p>
-      </details>
-    </section>
-  </main>
-  <div id="toast" class="toast"></div>
-  <script src="./app.js"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+  <section id="gameCard" class="card hidden">
+    <div class="players">
+      <div id="pO" class="player">
+        <div class="mark o">O</div>
+        <div id="nameO">방장</div>
+        <div id="scoreO" class="score">0</div>
+      </div>
+      <div class="vs">VS</div>
+      <div id="pX" class="player">
+        <div class="mark x">X</div>
+        <div id="nameX">참가자</div>
+        <div id="scoreX" class="score">0</div>
+      </div>
+    </div>
+
+    <div id="board" class="board"></div>
+    <div id="message" class="message"></div>
+    <div id="hint" class="hint">각자 말 3개를 놓은 뒤부터는 자신의 말을 이동합니다.</div>
+
+    <div class="row" style="margin-top:14px">
+      <button id="rematchBtn" class="primary" disabled>재대결</button>
+      <button id="leaveBtn" class="danger">나가기</button>
+    </div>
+  </section>
+
+  <div class="footer">두 휴대폰 모두 인터넷 연결이 필요합니다.</div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import {
+  getDatabase, ref, set, get, update, onValue, runTransaction, remove, onDisconnect
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDVxaAyi4XH9J_jxRY2bo8CVW9wZYOIbZU",
+  authDomain: "minigame-c8651.firebaseapp.com",
+  projectId: "minigame-c8651",
+  storageBucket: "minigame-c8651.firebasestorage.app",
+  messagingSenderId: "590831730158",
+  appId: "1:590831730158:web:65d6a022d256670b95a2ff",
+  measurementId: "G-4RWSEVQCXP",
+  databaseURL: "https://minigame-c8651-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const $ = id => document.getElementById(id);
+const lobby = $("lobby"), roomCard = $("roomCard"), gameCard = $("gameCard");
+const boardEl = $("board"), messageEl = $("message"), errorBox = $("errorBox");
+
+let roomId = null;
+let myMark = null;
+let myPlayerId = localStorage.getItem("moveox_player_id") || crypto.randomUUID();
+localStorage.setItem("moveox_player_id", myPlayerId);
+let roomUnsub = null;
+let selectedIndex = null;
+let latestRoom = null;
+
+function nickname(){
+  const value = $("nickname").value.trim();
+  return value || "플레이어";
+}
+$("nickname").value = localStorage.getItem("moveox_nickname") || "";
+
+function showError(message){
+  errorBox.textContent = message;
+  errorBox.classList.remove("hidden");
+}
+function clearError(){ errorBox.classList.add("hidden"); }
+
+function makeRoomCode(){
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+function emptyBoard(){ return Array(9).fill(""); }
+function counts(board, mark){ return board.filter(v => v === mark).length; }
+function winnerOf(board){
+  const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  for(const [a,b,c] of lines){
+    if(board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
+  }
+  return "";
+}
+function other(mark){ return mark === "O" ? "X" : "O"; }
+
+async function createRoom(){
+  clearError();
+  localStorage.setItem("moveox_nickname", nickname());
+  $("createBtn").disabled = true;
+  try{
+    let code, roomRef;
+    for(let i=0;i<15;i++){
+      code = makeRoomCode();
+      roomRef = ref(db, `rooms/${code}`);
+      const snap = await get(roomRef);
+      if(!snap.exists()) break;
     }
-  </script>
+    const now = Date.now();
+    await set(roomRef, {
+      createdAt: now,
+      updatedAt: now,
+      hostId: myPlayerId,
+      players: {
+        O: { id: myPlayerId, name: nickname(), connected: true }
+      },
+      board: emptyBoard(),
+      turn: "O",
+      phase: "waiting",
+      winner: "",
+      scores: { O: 0, X: 0 },
+      rematchVotes: {}
+    });
+    roomId = code;
+    myMark = "O";
+    await onDisconnect(ref(db, `rooms/${code}/players/O/connected`)).set(false);
+    enterRoom();
+  }catch(err){
+    showError("방을 만들지 못했습니다. Firebase Realtime Database 규칙에서 읽기와 쓰기가 허용되어 있는지 확인해주세요. 오류: " + err.message);
+  }finally{
+    $("createBtn").disabled = false;
+  }
+}
+
+async function joinRoom(){
+  clearError();
+  localStorage.setItem("moveox_nickname", nickname());
+  const code = $("roomInput").value.replace(/\D/g,"").slice(0,4);
+  if(code.length !== 4){ showError("4자리 방 번호를 입력해주세요."); return; }
+
+  $("joinBtn").disabled = true;
+  try{
+    const roomRef = ref(db, `rooms/${code}`);
+    const snap = await get(roomRef);
+    if(!snap.exists()) throw new Error("존재하지 않는 방입니다.");
+    const room = snap.val();
+    if(room.players?.X?.id && room.players.X.id !== myPlayerId) throw new Error("이미 두 명이 참가 중인 방입니다.");
+
+    await update(roomRef, {
+      "players/X": { id: myPlayerId, name: nickname(), connected: true },
+      phase: "playing",
+      updatedAt: Date.now()
+    });
+    roomId = code;
+    myMark = "X";
+    await onDisconnect(ref(db, `rooms/${code}/players/X/connected`)).set(false);
+    enterRoom();
+  }catch(err){
+    showError("입장하지 못했습니다. " + err.message);
+  }finally{
+    $("joinBtn").disabled = false;
+  }
+}
+
+function enterRoom(){
+  lobby.classList.add("hidden");
+  roomCard.classList.remove("hidden");
+  gameCard.classList.remove("hidden");
+  $("roomCode").textContent = roomId;
+  listenRoom();
+}
+
+function listenRoom(){
+  if(roomUnsub) roomUnsub();
+  roomUnsub = onValue(ref(db, `rooms/${roomId}`), snap => {
+    if(!snap.exists()){
+      showError("방이 종료되었거나 삭제되었습니다.");
+      resetToLobby();
+      return;
+    }
+    latestRoom = snap.val();
+    render(latestRoom);
+  }, err => showError("실시간 연결 오류: " + err.message));
+}
+
+function render(room){
+  const board = room.board || emptyBoard();
+  $("nameO").textContent = room.players?.O?.name || "방장";
+  $("nameX").textContent = room.players?.X?.name || "참가 대기";
+  $("scoreO").textContent = room.scores?.O || 0;
+  $("scoreX").textContent = room.scores?.X || 0;
+  $("pO").classList.toggle("active", room.turn === "O" && room.phase === "playing");
+  $("pX").classList.toggle("active", room.turn === "X" && room.phase === "playing");
+
+  if(room.phase === "waiting"){
+    $("roomStatus").textContent = "상대방에게 방 번호를 알려주세요.";
+    messageEl.textContent = "상대방을 기다리는 중입니다.";
+  }else if(room.phase === "finished"){
+    $("roomStatus").textContent = "한 판이 끝났습니다.";
+    messageEl.textContent = room.winner ? `${room.winner} 승리!` : "무승부";
+  }else{
+    $("roomStatus").textContent = `내 말: ${myMark} · ${room.turn === myMark ? "내 차례" : "상대 차례"}`;
+    messageEl.textContent = room.turn === myMark ? "내 차례입니다." : "상대방 차례입니다.";
+  }
+
+  boardEl.innerHTML = "";
+  board.forEach((v,i)=>{
+    const btn = document.createElement("button");
+    btn.className = "cell";
+    if(v) btn.classList.add(v.toLowerCase());
+    if(selectedIndex === i) btn.classList.add("selected");
+    if(v === myMark && counts(board,myMark) >= 3 && room.turn === myMark) btn.classList.add("movable");
+    btn.textContent = v;
+    btn.addEventListener("click",()=>playCell(i));
+    boardEl.appendChild(btn);
+  });
+
+  const voted = !!room.rematchVotes?.[myMark];
+  $("rematchBtn").disabled = room.phase !== "finished" || voted;
+  $("rematchBtn").textContent = voted ? "재대결 대기 중" : "재대결";
+}
+
+async function playCell(index){
+  clearError();
+  if(!latestRoom || latestRoom.phase !== "playing") return;
+  if(latestRoom.turn !== myMark){
+    navigator.vibrate?.(80); return;
+  }
+
+  const roomRef = ref(db, `rooms/${roomId}`);
+  try{
+    await runTransaction(roomRef, room => {
+      if(!room || room.phase !== "playing" || room.turn !== myMark) return;
+      const board = Array.isArray(room.board) ? room.board.slice() : emptyBoard();
+      const mine = counts(board,myMark);
+
+      if(mine < 3){
+        if(board[index]) return;
+        board[index] = myMark;
+      }else{
+        if(selectedIndex === null){
+          if(board[index] !== myMark) return;
+          selectedIndex = index;
+          return room;
+        }
+        if(index === selectedIndex){
+          selectedIndex = null;
+          return room;
+        }
+        if(board[index]) return;
+        board[selectedIndex] = "";
+        board[index] = myMark;
+        selectedIndex = null;
+      }
+
+      const winner = winnerOf(board);
+      room.board = board;
+      room.updatedAt = Date.now();
+
+      if(winner){
+        room.phase = "finished";
+        room.winner = winner;
+        room.scores = room.scores || {O:0,X:0};
+        room.scores[winner] = (room.scores[winner] || 0) + 1;
+        room.rematchVotes = {};
+      }else{
+        room.turn = other(myMark);
+      }
+      return room;
+    });
+  }catch(err){
+    showError("게임 정보를 저장하지 못했습니다: " + err.message);
+  }
+}
+
+async function voteRematch(){
+  if(!roomId || !myMark) return;
+  try{
+    await set(ref(db, `rooms/${roomId}/rematchVotes/${myMark}`), true);
+    await runTransaction(ref(db, `rooms/${roomId}`), room => {
+      if(!room || room.phase !== "finished") return room;
+      if(room.rematchVotes?.O && room.rematchVotes?.X){
+        room.board = emptyBoard();
+        room.turn = room.winner ? other(room.winner) : "O";
+        room.phase = "playing";
+        room.winner = "";
+        room.rematchVotes = {};
+        room.updatedAt = Date.now();
+      }
+      return room;
+    });
+  }catch(err){ showError("재대결 요청 실패: " + err.message); }
+}
+
+async function leaveRoom(){
+  try{
+    if(roomId && myMark){
+      await set(ref(db, `rooms/${roomId}/players/${myMark}/connected`), false);
+      if(myMark === "X"){
+        await remove(ref(db, `rooms/${roomId}/players/X`));
+        await update(ref(db, `rooms/${roomId}`), {phase:"waiting", board:emptyBoard(), winner:"", turn:"O"});
+      }
+    }
+  }catch(e){}
+  resetToLobby();
+}
+function resetToLobby(){
+  if(roomUnsub) roomUnsub();
+  roomUnsub = null; roomId = null; myMark = null; latestRoom = null; selectedIndex = null;
+  lobby.classList.remove("hidden"); roomCard.classList.add("hidden"); gameCard.classList.add("hidden");
+}
+
+$("createBtn").addEventListener("click", createRoom);
+$("joinShowBtn").addEventListener("click", ()=> $("joinArea").classList.toggle("hidden"));
+$("joinBtn").addEventListener("click", joinRoom);
+$("roomInput").addEventListener("input", e => e.target.value = e.target.value.replace(/\D/g,"").slice(0,4));
+$("copyBtn").addEventListener("click", async ()=>{
+  await navigator.clipboard?.writeText(roomId || "");
+  $("copyBtn").textContent = "복사됨";
+  setTimeout(()=>$("copyBtn").textContent="복사",1200);
+});
+$("rematchBtn").addEventListener("click", voteRematch);
+$("leaveBtn").addEventListener("click", leaveRoom);
+
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("./sw.js").catch(()=>{});
+}
+</script>
 </body>
 </html>
