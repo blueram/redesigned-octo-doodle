@@ -1,15 +1,13 @@
 {
   "name": "이동식 OX 게임",
   "short_name": "이동 OX",
-  "description": "말을 3개만 놓고 이후에는 이동하는 2인용 OX 게임",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f6f7ff",
-  "theme_color": "#2563eb",
-  "orientation": "portrait",
+  "theme_color": "#f6f7ff",
   "icons": [
-    {"src":"/icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
-    {"src":"/icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+    {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"},
+    {"src":"./icons/icon-512.png","sizes":"512x512","type":"image/png"}
   ]
 }

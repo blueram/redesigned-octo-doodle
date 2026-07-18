@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f7ff" />
   <title>이동식 OX 게임</title>
-  <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <main class="app">
@@ -15,38 +15,31 @@
       <div class="logo">OX</div>
       <h1>이동식 OX 게임</h1>
       <p>3개만 놓고, 4번째부터 기존 말을 이동하세요.</p>
-      <label>플레이어 이름<input id="nameInput" maxlength="12" placeholder="이름 입력" /></label>
-      <button id="createBtn" class="primary">새 게임 만들기</button>
-      <button id="localBtn" class="secondary">한 휴대폰에서 2인 플레이</button>
+      <button id="localBtn" class="primary">한 휴대폰에서 2인 플레이</button>
       <button id="installBtn" class="install hidden">이 휴대폰에 설치</button>
-      <div class="divider"><span>또는</span></div>
-      <div class="join-row">
-        <input id="roomInput" inputmode="numeric" maxlength="4" placeholder="방 번호 4자리" />
-        <button id="joinBtn">참가</button>
-      </div>
-      <p id="lobbyMsg" class="error"></p>
+      <p class="guide">X와 O가 한 화면에서 번갈아 진행합니다.</p>
     </section>
 
     <section id="game" class="panel game hidden">
       <header>
         <div>
           <h1>이동식 OX 게임</h1>
-          <p>방 번호 <strong id="roomCode">----</strong></p>
+          <p>한 휴대폰 2인 대전</p>
         </div>
         <button id="resetScoresBtn" class="icon-btn" title="점수 초기화">↻</button>
       </header>
 
       <section class="scoreboard">
-        <div class="score x-score"><span id="xName">플레이어 X</span><b id="xScore">0</b><small>승</small></div>
-        <div class="round-info"><span id="status">상대방을 기다리는 중</span><small id="mySymbol"></small></div>
+        <div class="score x-score"><span>플레이어 X</span><b id="xScore">0</b><small>승</small></div>
+        <div class="round-info"><span id="status">X 차례</span><small>번갈아 플레이</small></div>
         <div class="draw-score"><small>무승부</small><b id="drawScore">0</b></div>
-        <div class="score o-score"><span id="oName">플레이어 O</span><b id="oScore">0</b><small>승</small></div>
+        <div class="score o-score"><span>플레이어 O</span><b id="oScore">0</b><small>승</small></div>
       </section>
 
       <section id="board" class="board" aria-label="게임판"></section>
-
-      <div class="guide" id="guide">방 번호를 상대방에게 알려주세요.</div>
+      <div class="guide" id="guide">빈칸을 선택하세요.</div>
       <button id="nextRoundBtn" class="primary hidden">다음 경기</button>
+      <button id="homeBtn" class="secondary">처음 화면</button>
 
       <details>
         <summary>게임 규칙</summary>
@@ -54,10 +47,12 @@
       </details>
     </section>
   </main>
-
   <div id="toast" class="toast"></div>
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="app.js"></script>
-  <script>if ('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js'));</script>
+  <script src="./app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+    }
+  </script>
 </body>
 </html>
