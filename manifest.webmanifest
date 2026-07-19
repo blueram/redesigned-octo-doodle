@@ -1,6 +1,6 @@
 {
-  "name": "Move OX",
-  "short_name": "MoveOX",
+  "name": "MiniGame - 초성퀴즈와 그림맞히기",
+  "short_name": "MiniGame",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0f172a",
