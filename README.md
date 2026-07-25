@@ -1,13 +1,15 @@
-# MiniGame
+# MiniGame 3종 통합본
 
-포함 게임:
-- 초성 퀴즈
-- 그림 맞히기
+1. 초성 퀴즈
+2. 그림 맞히기
+3. 미니 포트리스
 
-## 설치
-압축파일 안의 모든 파일을 기존 GitHub Pages 저장소 최상위에 업로드하세요.
+미니 포트리스 기능:
+- 4자리 방 번호로 1:1 참가
+- 각도·파워 조절
+- 바람
+- 포탄 궤적과 폭발
+- 체력, 승패, 재대결
 
-## Firebase 규칙
-Realtime Database → Rules에서 `firebase-rules.json` 내용을 붙여넣고 게시하세요.
-
-현재 규칙은 테스트용 공개 규칙입니다.
+압축을 풀어 GitHub 저장소의 기존 파일과 교체하세요.
+Firebase Realtime Database 규칙은 기존 `firebase-rules.json`을 그대로 사용합니다.
