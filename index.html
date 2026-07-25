@@ -1,621 +1,121 @@
 <!doctype html>
 <html lang="ko">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827">
-<title>MiniGame</title>
-<link rel="manifest" href="./manifest.webmanifest">
-<style>
-:root{
-  --bg:#0f172a;--panel:#111827;--panel2:#1e293b;--line:#334155;
-  --text:#f8fafc;--muted:#94a3b8;--blue:#3b82f6;--green:#22c55e;
-  --pink:#ec4899;--yellow:#facc15;--red:#ef4444;
-}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;background:linear-gradient(160deg,#0f172a,#111827 65%,#172554);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;justify-content:center}
-.app{width:min(100%,620px);padding:calc(16px + env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom))}
-.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-h1{margin:0;font-size:29px}.badge{font-size:12px;color:#cbd5e1;background:#1e293b;border:1px solid var(--line);padding:7px 10px;border-radius:999px}
-.card{background:rgba(17,24,39,.96);border:1px solid var(--line);border-radius:20px;padding:16px;box-shadow:0 14px 40px rgba(0,0,0,.28);margin-bottom:14px}
-.hidden{display:none!important}
-label{display:block;font-size:13px;color:var(--muted);margin-bottom:7px}
-input,select,textarea{width:100%;background:#0b1220;border:1px solid #475569;border-radius:13px;padding:13px;color:white;font-size:16px;outline:none}
-input:focus,select:focus,textarea:focus{border-color:#60a5fa}
-button{border:0;border-radius:14px;padding:13px 12px;font-size:16px;font-weight:800;cursor:pointer}
-button:disabled{opacity:.45;cursor:not-allowed}
-.primary{background:var(--blue);color:white}.secondary{background:#334155;color:white}.pink{background:var(--pink);color:white}.green{background:var(--green);color:#052e16}.danger{background:#be123c;color:white}.ghost{background:#1e293b;color:#cbd5e1;border:1px solid var(--line)}
-.row{display:flex;gap:10px}.row>*{flex:1}
-.games{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
-.gamepick{background:#0b1220;border:2px solid var(--line);border-radius:18px;padding:16px;text-align:center;cursor:pointer}
-.gamepick.active{border-color:#60a5fa;background:#172554}
-.gamepick .emoji{font-size:34px}.gamepick b{display:block;margin-top:7px}.gamepick span{font-size:12px;color:var(--muted)}
-.error{background:#450a0a;border:1px solid #991b1b;color:#fecaca;padding:12px;border-radius:14px;font-size:13px;line-height:1.5;margin-bottom:14px}
-.roomline{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.roomcode{font-size:30px;font-weight:900;letter-spacing:6px;color:#fde68a}
-.status{margin-top:8px;color:#cbd5e1;font-size:14px}
-.playerList{display:flex;gap:8px;overflow-x:auto;padding:2px 0 8px}
-.playerChip{min-width:110px;background:#0b1220;border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
-.playerChip.me{outline:2px solid #60a5fa}.playerChip.drawer{outline:2px solid var(--yellow)}
-.score{font-size:18px;font-weight:900;color:#fde68a}
-.bigQuestion{font-size:44px;font-weight:900;text-align:center;letter-spacing:8px;padding:24px 8px;color:#fef3c7}
-.hint{text-align:center;color:var(--muted);min-height:20px}
-.message{text-align:center;font-weight:800;margin:12px 0;min-height:22px}
-.answerReveal{text-align:center;font-size:28px;font-weight:900;color:#86efac;margin:10px 0}
-.chat{height:160px;overflow-y:auto;background:#0b1220;border:1px solid var(--line);border-radius:14px;padding:10px;margin:10px 0}
-.chatline{font-size:14px;margin:4px 0;word-break:break-word}.chatline.correct{color:#86efac;font-weight:900}
-.canvasWrap{background:white;border-radius:18px;padding:8px;touch-action:none}
-canvas{display:block;width:100%;height:auto;background:white;border-radius:12px;touch-action:none}
-.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}
-.colorBtn{width:34px;height:34px;border-radius:50%;padding:0;border:3px solid white}.colorBtn.active{outline:3px solid var(--yellow)}
-.wordBox{text-align:center;background:#172554;border:1px solid #334155;border-radius:14px;padding:12px;margin:10px 0}
-.wordBox b{font-size:24px;color:#fde68a}
-.footer{text-align:center;color:#64748b;font-size:12px}
-@media(max-width:420px){.bigQuestion{font-size:36px}.games{grid-template-columns:1fr}}
-
-.fortHud{display:grid;grid-template-columns:1fr auto 1fr;gap:9px;align-items:center;margin-bottom:10px}
-.fortPlayer{background:#0b1220;border:1px solid var(--line);border-radius:14px;padding:9px}
-.fortPlayer.right{text-align:right}
-.hpbar{height:12px;background:#1f2937;border-radius:999px;overflow:hidden;margin-top:6px}
-.hpfill{height:100%;background:linear-gradient(90deg,#22c55e,#facc15,#ef4444);transition:.25s width}
-.wind{text-align:center;font-size:12px;color:#cbd5e1}.wind b{display:block;font-size:20px;color:#fef3c7}
-.fortCanvasWrap{background:#dbeafe;border-radius:18px;padding:6px;overflow:hidden}
-#fortCanvas{background:#93c5fd}
-.fortControls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
-.fortControl{background:#0b1220;border:1px solid var(--line);border-radius:15px;padding:11px}
-.fortValue{font-size:23px;font-weight:900;text-align:center;color:#fde68a;margin-bottom:8px}
-.adjust{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.fire{width:100%;margin-top:10px;background:linear-gradient(90deg,#f97316,#ef4444);color:white;font-size:19px}
-@media(max-width:520px){.fortHud{grid-template-columns:1fr}.wind{order:-1}.fortPlayer.right{text-align:left}.fortControls{grid-template-columns:1fr}}
-
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="theme-color" content="#101827">
+  <title>MiniGame 3종 PC</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="app">
-  <div class="top"><h1>MiniGame</h1><div class="badge">실시간 멀티플레이</div></div>
-  <div id="errorBox" class="error hidden"></div>
+  <header class="topbar">
+    <button id="homeBtn" class="icon-btn hidden" aria-label="홈으로">←</button>
+    <div>
+      <h1>MiniGame</h1>
+      <p id="subtitle">PC와 함께 즐기는 3가지 미니게임</p>
+    </div>
+  </header>
 
-  <section id="lobby" class="card">
-    <label for="nickname">닉네임</label>
-    <input id="nickname" maxlength="12" placeholder="예: 정식">
-    <div class="games">
-      <div class="gamepick active" data-game="choseong"><div class="emoji">🔤</div><b>초성 퀴즈</b><span>초성을 보고 먼저 맞히기</span></div>
-      <div class="gamepick" data-game="drawing"><div class="emoji">🎨</div><b>그림 맞히기</b><span>그림을 그리고 정답 맞히기</span></div>
-      <div class="gamepick" data-game="fortress"><div class="emoji">💥</div><b>미니 포트리스</b><span>각도·파워로 1:1 포격전</span></div>
-    </div>
-    <div class="row">
-      <button id="createBtn" class="primary">방 만들기</button>
-      <button id="joinShowBtn" class="secondary">방 참가</button>
-    </div>
-    <div id="joinArea" class="hidden" style="margin-top:12px">
-      <label for="roomInput">4자리 방 번호</label>
-      <input id="roomInput" inputmode="numeric" maxlength="4" placeholder="예: 4827">
-      <div style="height:10px"></div>
-      <button id="joinBtn" class="primary" style="width:100%">입장하기</button>
-    </div>
-  </section>
-
-  <section id="roomCard" class="card hidden">
-    <div class="roomline">
-      <div><div style="font-size:13px;color:#94a3b8">방 번호</div><div id="roomCode" class="roomcode">----</div></div>
-      <button id="copyBtn" class="ghost">복사</button>
-    </div>
-    <div id="roomStatus" class="status"></div>
-    <div id="playerList" class="playerList" style="margin-top:12px"></div>
-  </section>
-
-  <section id="choseongGame" class="card hidden">
-    <div id="hostQuestionPanel" class="hidden">
-      <label>정답</label>
-      <input id="answerInput" maxlength="20" placeholder="예: 아이스크림">
-      <div style="height:8px"></div>
-      <label>힌트(선택)</label>
-      <input id="hintInput" maxlength="40" placeholder="예: 차가운 디저트">
-      <div style="height:10px"></div>
-      <button id="startQuestionBtn" class="pink" style="width:100%">문제 출제</button>
-    </div>
-    <div id="choseongQuestionArea">
-      <div id="bigQuestion" class="bigQuestion">문제 대기</div>
-      <div id="questionHint" class="hint"></div>
-      <div id="answerReveal" class="answerReveal hidden"></div>
-      <div id="choseongMessage" class="message">방장이 문제를 준비하고 있습니다.</div>
-      <div class="row">
-        <input id="guessInput" maxlength="20" placeholder="정답 입력">
-        <button id="guessBtn" class="green">제출</button>
+  <main>
+    <section id="homeScreen" class="screen active">
+      <div class="game-grid">
+        <button class="game-card" data-game="ox">
+          <span class="emoji">⭕</span>
+          <strong>OX 이동식 게임</strong>
+          <small>3개를 놓은 뒤 말을 이동하며 PC와 대결</small>
+        </button>
+        <button class="game-card" data-game="chosung">
+          <span class="emoji">🔤</span>
+          <strong>초성 퀴즈</strong>
+          <small>힌트를 보고 정답을 입력하는 10문제</small>
+        </button>
+        <button class="game-card featured" data-game="fortress">
+          <span class="emoji">💥</span>
+          <strong>포트리스 PC 대전</strong>
+          <small>탱크 이동·각도·파워 조절로 PC를 격파</small>
+        </button>
       </div>
-      <div id="choseongChat" class="chat"></div>
-    </div>
-    <button id="leaveBtn1" class="danger" style="width:100%">방 나가기</button>
-  </section>
+    </section>
 
-  <section id="drawingGame" class="card hidden">
-    <div id="drawingWordBox" class="wordBox"><span>제시어</span><br><b id="drawingWord">대기 중</b></div>
-    <div id="drawingMessage" class="message">그림을 기다리는 중입니다.</div>
-    <div class="canvasWrap"><canvas id="canvas" width="900" height="650"></canvas></div>
-    <div id="drawTools" class="tools hidden">
-      <button class="colorBtn active" data-color="#111827" style="background:#111827"></button>
-      <button class="colorBtn" data-color="#ef4444" style="background:#ef4444"></button>
-      <button class="colorBtn" data-color="#3b82f6" style="background:#3b82f6"></button>
-      <button class="colorBtn" data-color="#22c55e" style="background:#22c55e"></button>
-      <button class="colorBtn" data-color="#f59e0b" style="background:#f59e0b"></button>
-      <button id="clearCanvasBtn" class="secondary">지우기</button>
-      <button id="nextDrawingBtn" class="pink">새 제시어</button>
-    </div>
-    <div class="row" style="margin-top:10px">
-      <input id="drawingGuessInput" maxlength="20" placeholder="정답 입력">
-      <button id="drawingGuessBtn" class="green">제출</button>
-    </div>
-    <div id="drawingChat" class="chat"></div>
-    <button id="leaveBtn2" class="danger" style="width:100%">방 나가기</button>
-  </section>
-
-
-  <section id="fortressGame" class="card hidden">
-    <div class="fortHud">
-      <div class="fortPlayer">
-        <div id="fortNameP1"><b>P1</b></div>
-        <div class="hpbar"><div id="fortHpP1" class="hpfill" style="width:100%"></div></div>
-      </div>
-      <div class="wind">바람<b id="fortWind">→ 0</b></div>
-      <div class="fortPlayer right">
-        <div id="fortNameP2"><b>P2 대기</b></div>
-        <div class="hpbar"><div id="fortHpP2" class="hpfill" style="width:100%"></div></div>
-      </div>
-    </div>
-    <div class="fortCanvasWrap"><canvas id="fortCanvas" width="900" height="520"></canvas></div>
-    <div id="fortMessage" class="message">상대방을 기다리는 중입니다.</div>
-    <div class="fortControls">
-      <div class="fortControl">
-        <label>각도</label>
-        <div id="fortAngleValue" class="fortValue">45°</div>
-        <div class="adjust">
-          <button id="fortAngleDown" class="secondary">− 5°</button>
-          <button id="fortAngleUp" class="secondary">+ 5°</button>
+    <section id="oxScreen" class="screen">
+      <div class="panel">
+        <div class="status-row">
+          <span id="oxStatus">내 차례입니다.</span>
+          <button id="oxReset">새 게임</button>
         </div>
+        <div id="oxBoard" class="ox-board" aria-label="OX 게임판"></div>
+        <p class="help">내 말은 X입니다. 처음 3개를 놓은 뒤에는 내 말을 누르고 빈칸을 눌러 이동하세요.</p>
       </div>
-      <div class="fortControl">
-        <label>파워</label>
-        <div id="fortPowerValue" class="fortValue">60</div>
-        <div class="adjust">
-          <button id="fortPowerDown" class="secondary">− 5</button>
-          <button id="fortPowerUp" class="secondary">+ 5</button>
+    </section>
+
+    <section id="chosungScreen" class="screen">
+      <div class="panel quiz-panel">
+        <div class="status-row">
+          <span id="quizProgress">1 / 10</span>
+          <strong id="quizScore">점수 0</strong>
         </div>
+        <div class="quiz-box">
+          <p id="quizCategory" class="tag">카테고리</p>
+          <div id="quizInitial" class="initial">ㅊㅅ</div>
+          <p id="quizHint" class="hint">힌트</p>
+          <input id="quizAnswer" type="text" placeholder="정답 입력" autocomplete="off">
+          <div class="button-row">
+            <button id="quizSubmit" class="primary">정답 확인</button>
+            <button id="quizSkip">건너뛰기</button>
+          </div>
+          <p id="quizMessage" class="message"></p>
+        </div>
+        <button id="quizRestart" class="hidden">다시 시작</button>
       </div>
-    </div>
-    <button id="fortFireBtn" class="fire" disabled>🔥 발사</button>
-    <div class="row" style="margin-top:10px">
-      <button id="fortRematchBtn" class="green" disabled>재대결</button>
-      <button id="leaveBtn3" class="danger">방 나가기</button>
-    </div>
-  </section>
+    </section>
 
-  <div class="footer">두 휴대폰 모두 인터넷 연결이 필요합니다.</div>
-</div>
+    <section id="fortressScreen" class="screen">
+      <div class="fortress-wrap">
+        <div class="fortress-head">
+          <div>
+            <strong id="fortressTurn">내 차례</strong>
+            <span id="fortressMessage">각도와 파워를 조절해 발사하세요.</span>
+          </div>
+          <button id="fortressReset">새 게임</button>
+        </div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getDatabase, ref, set, get, update, onValue, push, remove, onDisconnect, runTransaction } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+        <div class="health-row">
+          <div class="health-box"><span>나</span><div class="health-track"><i id="playerHp"></i></div><b id="playerHpText">100</b></div>
+          <div class="health-box"><span>PC</span><div class="health-track"><i id="aiHp"></i></div><b id="aiHpText">100</b></div>
+        </div>
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDVxaAyi4XH9J_jxRY2bo8CVW9wZYOIbZU",
-  authDomain: "minigame-c8651.firebaseapp.com",
-  projectId: "minigame-c8651",
-  storageBucket: "minigame-c8651.firebasestorage.app",
-  messagingSenderId: "590831730158",
-  appId: "1:590831730158:web:65d6a022d256670b95a2ff",
-  measurementId: "G-4RWSEVQCXP",
-  databaseURL: "https://minigame-c8651-default-rtdb.asia-southeast1.firebasedatabase.app"
-};
+        <canvas id="fortressCanvas" width="1000" height="520"></canvas>
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const $ = id => document.getElementById(id);
+        <div class="control-panel">
+          <div class="control-group">
+            <label>탱크 이동</label>
+            <div class="button-row">
+              <button class="hold-btn" data-action="moveLeft">◀ 왼쪽</button>
+              <button class="hold-btn" data-action="moveRight">오른쪽 ▶</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>각도 <b id="angleValue">45°</b></label>
+            <div class="button-row">
+              <button class="hold-btn" data-action="angleDown">−</button>
+              <button class="hold-btn" data-action="angleUp">＋</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>파워 <b id="powerValue">60</b></label>
+            <div class="button-row">
+              <button class="hold-btn" data-action="powerDown">−</button>
+              <button class="hold-btn" data-action="powerUp">＋</button>
+            </div>
+          </div>
+          <button id="fireBtn" class="fire-btn">🔥 발사</button>
+        </div>
+        <p class="help">버튼을 한 번 누르면 1단계, 길게 누르면 계속 1단계씩 조절됩니다. 더블클릭 확대는 차단되어 있습니다.</p>
+      </div>
+    </section>
+  </main>
 
-let selectedGame = "choseong";
-let roomId = null;
-let playerId = localStorage.getItem("minigame_player_id") || crypto.randomUUID();
-localStorage.setItem("minigame_player_id", playerId);
-let latestRoom = null;
-let unsub = null;
-let currentColor = "#111827";
-let drawing = false;
-let currentStroke = null;
-let renderedStrokeCount = 0;
-
-let fortAngle=45, fortPower=60, fortLastShotId=null, fortAnimating=false;
-const fortCanvas=$("fortCanvas"),fortCtx=fortCanvas.getContext("2d");
-
-
-const WORDS = ["고양이","강아지","자동차","비행기","바나나","사과","햄버거","피자","아이스크림","우산","안경","텔레비전","냉장고","세탁기","에어컨","축구공","농구공","기린","코끼리","토끼","달팽이","해바라기","산","바다","태양","달","별","선물","케이크","커피"];
-
-function nick(){ return $("nickname").value.trim() || "플레이어"; }
-$("nickname").value = localStorage.getItem("minigame_nickname") || "";
-
-function showError(msg){ $("errorBox").textContent = msg; $("errorBox").classList.remove("hidden"); }
-function clearError(){ $("errorBox").classList.add("hidden"); }
-function code(){ return String(Math.floor(1000 + Math.random()*9000)); }
-function normalize(s){ return (s||"").replace(/\s/g,"").toLowerCase(); }
-
-function choseongOf(text){
-  const choseong = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
-  return [...text].map(ch=>{
-    const n = ch.charCodeAt(0)-44032;
-    return n>=0 && n<11172 ? choseong[Math.floor(n/588)] : ch;
-  }).join(" ");
-}
-
-document.querySelectorAll(".gamepick").forEach(el=>{
-  el.addEventListener("click",()=>{
-    document.querySelectorAll(".gamepick").forEach(x=>x.classList.remove("active"));
-    el.classList.add("active");
-    selectedGame = el.dataset.game;
-  });
-});
-
-async function createRoom(){
-  clearError(); localStorage.setItem("minigame_nickname",nick());
-  $("createBtn").disabled = true;
-  try{
-    let c, r;
-    for(let i=0;i<15;i++){ c=code(); r=ref(db,`rooms/${c}`); if(!(await get(r)).exists()) break; }
-    await set(r,{
-      gameType:selectedGame,hostId:playerId,createdAt:Date.now(),phase:"waiting",
-      players:{[playerId]:{name:nick(),score:0,hp:100,joinedAt:Date.now(),connected:true}},
-      question:{status:"waiting"},messages:{},strokes:{},round:0,
-      turn:selectedGame==="fortress"?playerId:"",wind:selectedGame==="fortress"?randomFortWind():0,shot:null,winnerId:"",rematchVotes:{}
-    });
-    roomId=c;
-    await onDisconnect(ref(db,`rooms/${c}/players/${playerId}/connected`)).set(false);
-    enterRoom();
-  }catch(e){ showError("방을 만들지 못했습니다: "+e.message); }
-  finally{$("createBtn").disabled=false;}
-}
-
-async function joinRoom(){
-  clearError(); localStorage.setItem("minigame_nickname",nick());
-  const c=$("roomInput").value.replace(/\D/g,"").slice(0,4);
-  if(c.length!==4){showError("4자리 방 번호를 입력해주세요.");return;}
-  try{
-    const r=ref(db,`rooms/${c}`), s=await get(r);
-    if(!s.exists()) throw new Error("존재하지 않는 방입니다.");
-    const room=s.val();
-    const maxPlayers=room.gameType==="fortress"?2:8;
-    if(Object.keys(room.players||{}).length>=maxPlayers && !room.players?.[playerId]) throw new Error(room.gameType==="fortress"?"미니 포트리스는 2명만 참가할 수 있습니다.":"참가 인원이 가득 찼습니다.");
-    await set(ref(db,`rooms/${c}/players/${playerId}`),{name:nick(),score:room.players?.[playerId]?.score||0,hp:100,joinedAt:Date.now(),connected:true});
-    if(room.gameType==="fortress") await update(ref(db,`rooms/${c}`),{phase:"playing"});
-    roomId=c; selectedGame=room.gameType;
-    await onDisconnect(ref(db,`rooms/${c}/players/${playerId}/connected`)).set(false);
-    enterRoom();
-  }catch(e){showError("입장하지 못했습니다: "+e.message);}
-}
-
-function enterRoom(){
-  $("lobby").classList.add("hidden"); $("roomCard").classList.remove("hidden"); $("roomCode").textContent=roomId;
-  $("choseongGame").classList.toggle("hidden",selectedGame!=="choseong");
-  $("drawingGame").classList.toggle("hidden",selectedGame!=="drawing");
-  $("fortressGame").classList.toggle("hidden",selectedGame!=="fortress");
-  if(unsub) unsub();
-  unsub=onValue(ref(db,`rooms/${roomId}`),snap=>{
-    if(!snap.exists()){showError("방이 종료되었습니다.");resetLobby();return;}
-    latestRoom=snap.val(); selectedGame=latestRoom.gameType; renderRoom();
-  },e=>showError("실시간 연결 오류: "+e.message));
-}
-
-function playerEntries(){
-  return Object.entries(latestRoom?.players||{}).sort((a,b)=>(a[1].joinedAt||0)-(b[1].joinedAt||0));
-}
-
-function renderPlayers(){
-  $("playerList").innerHTML="";
-  playerEntries().forEach(([id,p])=>{
-    const d=document.createElement("div");
-    d.className="playerChip"+(id===playerId?" me":"")+(id===latestRoom.drawerId?" drawer":"");
-    d.innerHTML=`<div>${p.name}${id===latestRoom.hostId?" 👑":""}${id===latestRoom.drawerId?" ✏️":""}</div><div class="score">${p.score||0}점</div>`;
-    $("playerList").appendChild(d);
-  });
-}
-
-function renderRoom(){
-  renderPlayers();
-  const gameName=selectedGame==="choseong"?"초성 퀴즈":selectedGame==="drawing"?"그림 맞히기":"미니 포트리스";
-  $("roomStatus").textContent=gameName+` · ${playerEntries().length}명 참가`;
-  if(selectedGame==="choseong") renderChoseong(); else if(selectedGame==="drawing") renderDrawing(); else renderFortress();
-}
-
-function renderMessages(targetId){
-  const box=$(targetId); box.innerHTML="";
-  Object.values(latestRoom.messages||{}).sort((a,b)=>(a.time||0)-(b.time||0)).slice(-30).forEach(m=>{
-    const div=document.createElement("div");
-    div.className="chatline"+(m.correct?" correct":"");
-    div.textContent=m.correct?`🎉 ${m.name} 정답! ${m.text}`:`${m.name}: ${m.text}`;
-    box.appendChild(div);
-  });
-  box.scrollTop=box.scrollHeight;
-}
-
-function renderChoseong(){
-  const q=latestRoom.question||{status:"waiting"};
-  const host=latestRoom.hostId===playerId;
-  $("hostQuestionPanel").classList.toggle("hidden",!host || q.status==="playing");
-  $("guessInput").disabled=q.status!=="playing";
-  $("guessBtn").disabled=q.status!=="playing";
-  $("bigQuestion").textContent=q.status==="waiting"?"문제 대기":q.initials||"";
-  $("questionHint").textContent=q.hint?`힌트: ${q.hint}`:"";
-  $("answerReveal").classList.toggle("hidden",q.status!=="solved");
-  $("answerReveal").textContent=q.status==="solved"?`정답: ${q.answer}`:"";
-  $("choseongMessage").textContent=q.status==="playing"?"정답을 먼저 맞혀보세요!":q.status==="solved"?"방장이 다음 문제를 출제할 수 있습니다.":"방장이 문제를 준비하고 있습니다.";
-  renderMessages("choseongChat");
-}
-
-async function startQuestion(){
-  const answer=$("answerInput").value.trim();
-  if(!answer){showError("정답을 입력해주세요.");return;}
-  await update(ref(db,`rooms/${roomId}`),{
-    question:{answer,initials:choseongOf(answer),hint:$("hintInput").value.trim(),status:"playing",startedAt:Date.now()},
-    messages:{},phase:"playing"
-  });
-  $("answerInput").value="";$("hintInput").value="";
-}
-
-async function submitChoseongGuess(){
-  const text=$("guessInput").value.trim(); if(!text||!latestRoom)return;
-  const correct=normalize(text)===normalize(latestRoom.question?.answer);
-  await push(ref(db,`rooms/${roomId}/messages`),{name:nick(),text,time:Date.now(),correct});
-  $("guessInput").value="";
-  if(correct && latestRoom.question?.status==="playing"){
-    const p=latestRoom.players?.[playerId];
-    await update(ref(db,`rooms/${roomId}`),{
-      "question/status":"solved",
-      [`players/${playerId}/score`]:(p?.score||0)+1
-    });
-    navigator.vibrate?.([100,60,120]);
-  }
-}
-
-function nextDrawerId(){
-  const ids=playerEntries().map(([id])=>id);
-  if(!ids.length)return playerId;
-  const idx=Math.max(-1,ids.indexOf(latestRoom.drawerId));
-  return ids[(idx+1)%ids.length];
-}
-function randomWord(){return WORDS[Math.floor(Math.random()*WORDS.length)];}
-
-async function startDrawingRound(){
-  const drawer=latestRoom.drawerId || nextDrawerId();
-  const actualDrawer = latestRoom.round ? nextDrawerId() : drawer;
-  await update(ref(db,`rooms/${roomId}`),{
-    drawerId:actualDrawer,word:randomWord(),phase:"drawing",round:(latestRoom.round||0)+1,
-    strokes:{},messages:{},winnerId:""
-  });
-}
-
-function renderDrawing(){
-  const isDrawer=latestRoom.drawerId===playerId;
-  $("drawTools").classList.toggle("hidden",!isDrawer);
-  $("drawingGuessInput").disabled=isDrawer || latestRoom.phase!=="drawing";
-  $("drawingGuessBtn").disabled=isDrawer || latestRoom.phase!=="drawing";
-  if(!latestRoom.drawerId && latestRoom.hostId===playerId){
-    $("drawingWord").textContent="게임 시작";
-    $("drawingMessage").textContent="새 제시어를 눌러 첫 라운드를 시작하세요.";
-    $("drawTools").classList.remove("hidden");
-  }else{
-    $("drawingWord").textContent=isDrawer?(latestRoom.word||"대기 중"):"???";
-    $("drawingMessage").textContent=isDrawer?"제시어를 그림으로 표현하세요.":"그림을 보고 정답을 맞혀보세요.";
-  }
-  renderMessages("drawingChat");
-  renderCanvasFromRoom();
-}
-
-async function submitDrawingGuess(){
-  const text=$("drawingGuessInput").value.trim(); if(!text||!latestRoom)return;
-  const correct=normalize(text)===normalize(latestRoom.word);
-  await push(ref(db,`rooms/${roomId}/messages`),{name:nick(),text,time:Date.now(),correct});
-  $("drawingGuessInput").value="";
-  if(correct && latestRoom.phase==="drawing"){
-    const guesser=latestRoom.players?.[playerId], drawer=latestRoom.players?.[latestRoom.drawerId];
-    const updates={
-      phase:"solved",winnerId:playerId,
-      [`players/${playerId}/score`]:(guesser?.score||0)+2
-    };
-    if(latestRoom.drawerId) updates[`players/${latestRoom.drawerId}/score`]=(drawer?.score||0)+1;
-    await update(ref(db,`rooms/${roomId}`),updates);
-    navigator.vibrate?.([100,60,120]);
-  }
-}
-
-const canvas=$("canvas"),ctx=canvas.getContext("2d");
-ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=8;
-function canvasPos(e){
-  const r=canvas.getBoundingClientRect(),t=e.touches?e.touches[0]:e;
-  return {x:(t.clientX-r.left)*(canvas.width/r.width),y:(t.clientY-r.top)*(canvas.height/r.height)};
-}
-function drawStroke(stroke){
-  const pts=stroke.points||[]; if(pts.length<2)return;
-  ctx.strokeStyle=stroke.color||"#111827";ctx.lineWidth=stroke.width||8;ctx.beginPath();
-  ctx.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x,pts[i].y);ctx.stroke();
-}
-function clearCanvasLocal(){ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle="white";ctx.fillRect(0,0,canvas.width,canvas.height);}
-clearCanvasLocal();
-
-function renderCanvasFromRoom(){
-  clearCanvasLocal();
-  Object.values(latestRoom.strokes||{}).forEach(drawStroke);
-}
-function startDraw(e){
-  if(latestRoom?.drawerId!==playerId || latestRoom.phase!=="drawing")return;
-  drawing=true;currentStroke={color:currentColor,width:8,points:[canvasPos(e)]};e.preventDefault();
-}
-function moveDraw(e){
-  if(!drawing)return;
-  const p=canvasPos(e),pts=currentStroke.points,prev=pts[pts.length-1];pts.push(p);
-  ctx.strokeStyle=currentColor;ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(prev.x,prev.y);ctx.lineTo(p.x,p.y);ctx.stroke();e.preventDefault();
-}
-async function endDraw(e){
-  if(!drawing)return; drawing=false;
-  if(currentStroke.points.length>1) await push(ref(db,`rooms/${roomId}/strokes`),currentStroke);
-  currentStroke=null;e.preventDefault();
-}
-["mousedown","touchstart"].forEach(ev=>canvas.addEventListener(ev,startDraw,{passive:false}));
-["mousemove","touchmove"].forEach(ev=>canvas.addEventListener(ev,moveDraw,{passive:false}));
-["mouseup","mouseleave","touchend"].forEach(ev=>canvas.addEventListener(ev,endDraw,{passive:false}));
-
-document.querySelectorAll(".colorBtn").forEach(b=>b.addEventListener("click",()=>{
-  document.querySelectorAll(".colorBtn").forEach(x=>x.classList.remove("active"));b.classList.add("active");currentColor=b.dataset.color;
-}));
-
-
-function randomFortWind(){return Math.floor(Math.random()*13)-6;}
-function fortClamp(v,min,max){return Math.max(min,Math.min(max,v));}
-function fortPlayers(){
-  return playerEntries().slice(0,2);
-}
-function myFortSide(){
-  const ids=fortPlayers().map(([id])=>id);
-  const i=ids.indexOf(playerId);
-  return i===0?"P1":i===1?"P2":null;
-}
-function fortIdBySide(side){
-  const ps=fortPlayers();
-  return side==="P1"?ps[0]?.[0]:ps[1]?.[0];
-}
-function fortTankPositions(){return {P1:{x:130,y:390},P2:{x:770,y:390}};}
-
-function drawFortTank(side,x,y,color){
-  const id=fortIdBySide(side), hp=latestRoom?.players?.[id]?.hp??100;
-  fortCtx.save();fortCtx.globalAlpha=hp>0?1:.35;
-  fortCtx.fillStyle="#111827";fortCtx.fillRect(x-35,y+15,70,16);
-  fortCtx.fillStyle=color;fortCtx.fillRect(x-28,y-2,56,26);
-  fortCtx.beginPath();fortCtx.arc(x,y,22,Math.PI,0);fortCtx.fill();
-  const shownAngle=side===myFortSide()?fortAngle:45;
-  const barrel=side==="P1"?shownAngle*Math.PI/180:Math.PI-shownAngle*Math.PI/180;
-  fortCtx.strokeStyle="#111827";fortCtx.lineWidth=8;fortCtx.beginPath();
-  fortCtx.moveTo(x,y-5);fortCtx.lineTo(x+Math.cos(barrel)*45,y-5-Math.sin(barrel)*45);fortCtx.stroke();
-  fortCtx.restore();
-}
-function drawFortScene(projectile=null,explosion=null){
-  fortCtx.clearRect(0,0,900,520);
-  const sky=fortCtx.createLinearGradient(0,0,0,520);sky.addColorStop(0,"#93c5fd");sky.addColorStop(1,"#dbeafe");
-  fortCtx.fillStyle=sky;fortCtx.fillRect(0,0,900,520);
-  fortCtx.fillStyle="#86efac";fortCtx.beginPath();fortCtx.moveTo(0,420);
-  fortCtx.quadraticCurveTo(180,320,340,400);fortCtx.quadraticCurveTo(520,470,900,350);
-  fortCtx.lineTo(900,520);fortCtx.lineTo(0,520);fortCtx.closePath();fortCtx.fill();
-  fortCtx.fillStyle="#65a30d";fortCtx.fillRect(0,420,900,100);
-  const pos=fortTankPositions();drawFortTank("P1",pos.P1.x,pos.P1.y,"#2563eb");drawFortTank("P2",pos.P2.x,pos.P2.y,"#dc2626");
-  if(projectile){fortCtx.fillStyle="#111827";fortCtx.beginPath();fortCtx.arc(projectile.x,projectile.y,7,0,Math.PI*2);fortCtx.fill();}
-  if(explosion){
-    fortCtx.fillStyle="rgba(249,115,22,.82)";fortCtx.beginPath();fortCtx.arc(explosion.x,explosion.y,explosion.r,0,Math.PI*2);fortCtx.fill();
-    fortCtx.fillStyle="rgba(250,204,21,.82)";fortCtx.beginPath();fortCtx.arc(explosion.x,explosion.y,explosion.r*.55,0,Math.PI*2);fortCtx.fill();
-  }
-}
-function updateFortControls(){
-  $("fortAngleValue").textContent=fortAngle+"°";$("fortPowerValue").textContent=fortPower;drawFortScene();
-}
-function renderFortress(){
-  const ps=fortPlayers(),p1=ps[0]?.[1],p2=ps[1]?.[1],side=myFortSide();
-  $("fortNameP1").innerHTML=`<b>${p1?.name||"P1"}</b>`;
-  $("fortNameP2").innerHTML=`<b>${p2?.name||"P2 대기"}</b>`;
-  $("fortHpP1").style.width=`${fortClamp(p1?.hp??100,0,100)}%`;
-  $("fortHpP2").style.width=`${fortClamp(p2?.hp??100,0,100)}%`;
-  const w=latestRoom.wind||0;$("fortWind").textContent=(w>=0?"→ ":"← ")+Math.abs(w);
-  let msg="상대방을 기다리는 중입니다.";
-  if(ps.length===2){
-    if(latestRoom.phase==="finished") msg=(latestRoom.winnerId===playerId?"승리했습니다! 🎉":"상대방이 승리했습니다.");
-    else msg=latestRoom.turn===playerId?"내 차례입니다. 각도와 파워를 조절하세요.":"상대방 차례입니다.";
-  }
-  $("fortMessage").textContent=msg;
-  $("fortFireBtn").disabled=ps.length<2||latestRoom.phase!=="playing"||latestRoom.turn!==playerId||fortAnimating;
-  $("fortRematchBtn").disabled=latestRoom.phase!=="finished"||latestRoom.rematchVotes?.[playerId];
-  $("fortRematchBtn").textContent=latestRoom.rematchVotes?.[playerId]?"상대 대기 중":"재대결";
-  drawFortScene();
-  const shot=latestRoom.shot;
-  if(shot&&shot.id!==fortLastShotId){fortLastShotId=shot.id;animateFortShot(shot);}
-}
-function fortTrajectory(shot){
-  const pos=fortTankPositions()[shot.side],dir=shot.side==="P1"?1:-1,rad=shot.angle*Math.PI/180;
-  const speed=shot.power*.18,vx=Math.cos(rad)*speed*dir,vy=-Math.sin(rad)*speed,wind=(shot.wind||0)*.025;
-  let x=pos.x,y=pos.y-15,t=0;const points=[];
-  while(t<300){points.push({x,y});x+=vx+wind*t;y+=vy+.045*t;t++;if(y>=420||x<0||x>900)break;}
-  return points;
-}
-async function fortFire(){
-  const side=myFortSide();
-  if(!side||latestRoom?.turn!==playerId||latestRoom?.phase!=="playing")return;
-  await set(ref(db,`rooms/${roomId}/shot`),{id:crypto.randomUUID(),shooterId:playerId,side,angle:fortAngle,power:fortPower,wind:latestRoom.wind||0,resolved:false,time:Date.now()});
-}
-async function animateFortShot(shot){
-  if(fortAnimating)return;
-  fortAnimating=true;$("fortFireBtn").disabled=true;
-  const pts=fortTrajectory(shot);
-  for(let i=0;i<pts.length;i+=2){drawFortScene(pts[i]);await new Promise(r=>setTimeout(r,16));}
-  const impact=pts[pts.length-1];
-  for(let r=8;r<=48;r+=8){drawFortScene(null,{x:impact.x,y:impact.y,r});await new Promise(v=>setTimeout(v,35));}
-  await resolveFortShot(shot,impact);
-  fortAnimating=false;
-}
-async function resolveFortShot(shot,impact){
-  await runTransaction(ref(db,`rooms/${roomId}`),room=>{
-    if(!room||room.gameType!=="fortress"||room.phase!=="playing"||room.shot?.id!==shot.id||room.shot?.resolved)return room;
-    const entries=Object.entries(room.players||{}).sort((a,b)=>(a[1].joinedAt||0)-(b[1].joinedAt||0)).slice(0,2);
-    const targetSide=shot.side==="P1"?"P2":"P1",targetId=targetSide==="P1"?entries[0]?.[0]:entries[1]?.[0];
-    if(!targetId)return room;
-    const pos=fortTankPositions()[targetSide],dist=Math.hypot(impact.x-pos.x,impact.y-pos.y);
-    let damage=dist<45?45:dist<80?28:dist<120?14:0;
-    room.players[targetId].hp=Math.max(0,(room.players[targetId].hp??100)-damage);
-    room.shot.resolved=true;room.shot.damage=damage;
-    if(room.players[targetId].hp<=0){room.phase="finished";room.winnerId=shot.shooterId;}
-    else{room.turn=targetId;room.wind=randomFortWind();}
-    return room;
-  });
-}
-async function fortVoteRematch(){
-  await set(ref(db,`rooms/${roomId}/rematchVotes/${playerId}`),true);
-  await runTransaction(ref(db,`rooms/${roomId}`),room=>{
-    if(!room||room.phase!=="finished")return room;
-    const ids=Object.keys(room.players||{});
-    if(ids.length===2&&ids.every(id=>room.rematchVotes?.[id])){
-      room.phase="playing";room.turn=ids.sort((a,b)=>(room.players[a].joinedAt||0)-(room.players[b].joinedAt||0))[0];
-      room.wind=randomFortWind();room.winnerId="";room.shot=null;room.rematchVotes={};
-      ids.forEach(id=>room.players[id].hp=100);
-    }
-    return room;
-  });
-}
-
-async function leaveRoom(){
-  try{if(roomId)await remove(ref(db,`rooms/${roomId}/players/${playerId}`));}catch(e){}
-  resetLobby();
-}
-function resetLobby(){
-  if(unsub)unsub();unsub=null;roomId=null;latestRoom=null;
-  $("lobby").classList.remove("hidden");$("roomCard").classList.add("hidden");$("choseongGame").classList.add("hidden");$("drawingGame").classList.add("hidden");$("fortressGame").classList.add("hidden");
-}
-
-$("createBtn").addEventListener("click",createRoom);
-$("joinShowBtn").addEventListener("click",()=>$("joinArea").classList.toggle("hidden"));
-$("joinBtn").addEventListener("click",joinRoom);
-$("roomInput").addEventListener("input",e=>e.target.value=e.target.value.replace(/\D/g,"").slice(0,4));
-$("copyBtn").addEventListener("click",async()=>{await navigator.clipboard?.writeText(roomId||"");$("copyBtn").textContent="복사됨";setTimeout(()=>$("copyBtn").textContent="복사",1000);});
-$("startQuestionBtn").addEventListener("click",startQuestion);
-$("guessBtn").addEventListener("click",submitChoseongGuess);
-$("guessInput").addEventListener("keydown",e=>{if(e.key==="Enter")submitChoseongGuess();});
-$("drawingGuessBtn").addEventListener("click",submitDrawingGuess);
-$("drawingGuessInput").addEventListener("keydown",e=>{if(e.key==="Enter")submitDrawingGuess();});
-$("nextDrawingBtn").addEventListener("click",startDrawingRound);
-$("clearCanvasBtn").addEventListener("click",async()=>{await set(ref(db,`rooms/${roomId}/strokes`),{});});
-$("leaveBtn1").addEventListener("click",leaveRoom);
-$("leaveBtn2").addEventListener("click",leaveRoom);
-
-
-$("fortAngleDown").addEventListener("click",()=>{fortAngle=fortClamp(fortAngle-5,10,80);updateFortControls();});
-$("fortAngleUp").addEventListener("click",()=>{fortAngle=fortClamp(fortAngle+5,10,80);updateFortControls();});
-$("fortPowerDown").addEventListener("click",()=>{fortPower=fortClamp(fortPower-5,20,100);updateFortControls();});
-$("fortPowerUp").addEventListener("click",()=>{fortPower=fortClamp(fortPower+5,20,100);updateFortControls();});
-$("fortFireBtn").addEventListener("click",fortFire);
-$("fortRematchBtn").addEventListener("click",fortVoteRematch);
-$("leaveBtn3").addEventListener("click",leaveRoom);
-updateFortControls();
-
-if("serviceWorker" in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
-</script>
+  <script src="app.js"></script>
 </body>
 </html>
