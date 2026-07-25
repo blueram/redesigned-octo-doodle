@@ -8,24 +8,29 @@ try{firebase.initializeApp(firebaseConfig);db=firebase.database();}catch(e){cons
 const uid=localStorage.mg_uid||(localStorage.mg_uid=crypto.randomUUID());
 const animals=["호랑이","토끼","여우","판다","수달","사자","돌고래","고양이","강아지","펭귄"];
 let nickname=localStorage.mg_nick||animals[Math.floor(Math.random()*animals.length)]+Math.floor(100+Math.random()*900);
-let stats=JSON.parse(localStorage.mg_stats||'{"chosungBest":null,"games":{"chosung":{"played":0,"wins":0,"losses":0,"draws":0},"ox":{"played":0,"wins":0,"losses":0,"draws":0},"fortress":{"played":0,"wins":0,"losses":0,"draws":0}}}');
-stats.games=stats.games||{chosung:{played:0,wins:stats.chosungWins||0,losses:0,draws:0},ox:{played:0,wins:stats.oxWins||0,losses:0,draws:0},fortress:{played:0,wins:stats.fortressWins||0,losses:0,draws:0}};
+let stats=JSON.parse(localStorage.mg_stats||'{}');
+function blankMode(){return {played:0,wins:0,losses:0,draws:0,lastPlayed:null}}
+function ensureStats(){
+ stats.chosungBest=stats.chosungBest||null;stats.games=stats.games||{};
+ for(const k of ["chosung","ox","fortress"]){const old=stats.games[k]||{};stats.games[k]=stats.games[k]||{};for(const m of ["solo","online"]){stats.games[k][m]=stats.games[k][m]&&typeof stats.games[k][m].played==="number"?stats.games[k][m]:blankMode()}if(typeof old.played==="number"){stats.games[k].solo={played:old.played||0,wins:old.wins||0,losses:old.losses||0,draws:old.draws||0,lastPlayed:old.lastPlayed||null}}}
+}
+ensureStats();
 let game="", room="", isHost=false, roomRef=null, unsub=null, mode="solo";
 const toast=t=>{const x=$("#toast");x.textContent=t;x.classList.add("show");setTimeout(()=>x.classList.remove("show"),1800)};
 function saveStats(){localStorage.mg_stats=JSON.stringify(stats);renderStats()}
 function screen(id){$$(".screen").forEach(x=>x.classList.remove("active"));$("#"+id).classList.add("active");$("#homeBtn").classList.toggle("hidden",id==="home")}
 function renderStats(){
- const card=(key,label)=>{const s=stats.games[key]||{played:0,wins:0,losses:0,draws:0};const rate=s.played?Math.round(s.wins/s.played*100):0;return `<div class="player"><div class="muted">${label}</div><div class="score">${s.wins}승</div><div class="muted">${s.played}전 · ${rate}%</div></div>`};
+ const card=(key,label)=>{const a=stats.games[key].solo,b=stats.games[key].online;const line=(n,x)=>`${n} ${x.wins}승 ${x.losses}패 ${x.draws}무 · ${x.played}전`;return `<div class="player"><div class="muted">${label}</div><div class="score">${a.wins+b.wins}승</div><div class="muted">${line("PC",a)}<br>${line("온라인",b)}</div></div>`};
  $("#myStats").innerHTML=`<div class="player"><div class="muted">초성 최고</div><div class="score">${stats.chosungBest?stats.chosungBest.toFixed(1)+"초":"-"}</div></div>${card("chosung","초성퀴즈")}${card("ox","OX")}${card("fortress","포트리스")}`;
 }
-async function recordGame(kind,result,duration=0){
- const s=stats.games[kind]||(stats.games[kind]={played:0,wins:0,losses:0,draws:0});s.played++;if(result==="win")s.wins++;else if(result==="loss")s.losses++;else s.draws++;saveStats();
- if(db)await db.ref(`playerStats/${uid}`).update({nickname,lastPlayed:Date.now(),[`games/${kind}`]:s,[`recent/${Date.now()}`]:{kind,result,duration}}).catch(()=>{});
+async function recordGame(kind,result,duration=0,playMode=mode){
+ const m=playMode==="online"?"online":"solo",s=stats.games[kind][m];s.played++;if(result==="win")s.wins++;else if(result==="loss")s.losses++;else s.draws++;s.lastPlayed=Date.now();saveStats();
+ if(db)await db.ref(`playerStats/${uid}`).update({nickname,lastPlayed:Date.now(),[`games/${kind}/${m}`]:s,[`recent/${Date.now()}`]:{kind,mode:m,result,duration}}).catch(()=>{});
 }
 function showResult(title,detail,retryText="다시하기",exitText="게임 종료"){$("#resultTitle").textContent=title;$("#resultDetail").innerHTML=detail;$("#resultRetry").textContent=retryText;$("#resultExit").textContent=exitText;$("#resultModal").classList.remove("hidden")}
 function hideResult(){$("#resultModal").classList.add("hidden")}
-async function requestRematch(kind){if(mode!=="online"){hideResult();return kind==="chosung"?startChosung():kind==="ox"?startOX():startFortress()}await roomRef.child("rematch/"+uid).set(true);$("#resultDetail").textContent="상대방의 재경기 선택을 기다리는 중..."}
-$("#resetStats").onclick=async()=>{if(!confirm("내 모든 전적을 삭제하시겠습니까? 복구할 수 없습니다."))return;stats={chosungBest:null,games:{chosung:{played:0,wins:0,losses:0,draws:0},ox:{played:0,wins:0,losses:0,draws:0},fortress:{played:0,wins:0,losses:0,draws:0}}};saveStats();if(db)await db.ref(`playerStats/${uid}`).remove().catch(()=>{});toast("내 전적을 초기화했습니다.")};
+async function requestRematch(kind){if(mode!=="online"){hideResult();return kind==="chosung"?startChosung():kind==="ox"?startOX():startTerrainSelection()}await roomRef.child("rematch/"+uid).set(true);$("#resultDetail").textContent="상대방의 재경기 선택을 기다리는 중..."}
+$("#resetStats").onclick=async()=>{if(!confirm("내 모든 전적을 삭제하시겠습니까? 복구할 수 없습니다."))return;stats={chosungBest:null,games:{}};ensureStats();saveStats();if(db)await db.ref(`playerStats/${uid}`).remove().catch(()=>{});toast("내 전적을 초기화했습니다.")};
 
 async function hall(){
  if(!db)return;
@@ -73,7 +78,7 @@ function renderRoomPlayers(ps){$("#roomPlayers").innerHTML=Object.entries(ps).ma
 $("#copyRoom").onclick=()=>navigator.clipboard?.writeText(room).then(()=>toast("방 코드를 복사했습니다."));
 $("#shareRoom").onclick=async()=>{const url=location.origin+location.pathname+"?game="+game+"&room="+room;try{await navigator.share({title:"MiniGame 초대",text:`${nickname}님의 ${gameName(game)} 방`,url})}catch{navigator.clipboard?.writeText(url);toast("초대 링크를 복사했습니다.")}};
 $("#startOnline").onclick=async()=>{if(!isHost)return;await roomRef.update({status:"playing",started:Date.now(),state:null})};
-function startGame(m,v){mode=m;if(unsub){unsub();unsub=null} if(game==="chosung")startChosung();else if(game==="ox")startOX();else startFortress()}
+function startGame(m,v){mode=m;if(unsub){unsub();unsub=null} if(game==="chosung")startChosung();else if(game==="ox")startOX();else startTerrainSelection()}
 
 /* CHOSUNG */
 const WORDS=["가방","가위","가족","간식","갈비","감자","강아지","거울","건물","게임","겨울","고기","고양이","공원","공책","과자","교실","구름","기차","김밥","나무","냉면","노래","눈물","다리","달력","도서관","도시","동물","라면","마음","마이크","만두","모자","무지개","문어","바나나","바다","바람","박물관","밥상","배추","버스","병원","보리","복숭아","비누","비행기","사과","사람","사진","산책","선물","수박","시장","신발","아기","아이스크림","안경","야구","약속","양말","여행","연필","영화","오렌지","우산","운동","원숭이","음악","의자","자동차","자전거","장갑","전화","지갑","지하철","창문","책상","초콜릿","치킨","친구","카메라","커피","컴퓨터","토마토","학교","햄버거","휴대폰","냉장고","세탁기","청소기","에어컨","로봇","텔레비전","선풍기","제습기","전자레인지","공기청정기","안마의자","노트북","키보드","마우스","인터넷","소파","침대","식탁","옷장","화장실","주방","거실","베란다","아파트","엘리베이터","계단","주차장","편의점","백화점","마트","식당","카페","빵집","미용실","은행","우체국","경찰서","소방서","놀이터","수영장","헬스장","축구장","야구장","공항","기차역","버스터미널","여권","비밀번호","생일","결혼식","졸업식","크리스마스","어린이날","추석","설날","봄","여름","가을","겨울","아침","점심","저녁","새벽","월요일","화요일","수요일","목요일","금요일","토요일","일요일"];
@@ -559,13 +564,12 @@ function finishOXTurn(){
    renderOX();
 
    if(ox.roundWins[winner]>=3){
-     const myWin=(mode==="solo"&&winner==="X")||(mode==="online"&&winner===ox.me);
-     if(myWin){
-       stats.oxWins++;
-       saveStats();
-       if(mode==="online")finishOnline("ox",uid);
-     }
+     const myWin=winner===ox.me;
+     recordGame("ox",myWin?"win":"loss");
+     if(mode==="online"&&myWin)finishOnline("ox",uid);
      $("#oxStatus").textContent=`${winner} 최종 승리 · 3승 달성`;
+     showResult(myWin?"🏆 OX 승리":"OX 패배",`${ox.roundWins[ox.me]||0} : ${ox.roundWins[ox.me==="X"?"O":"X"]||0}`,"다시 대전하기",mode==="online"?"방에서 나가기":"게임 종료");
+     $("#resultRetry").onclick=()=>requestRematch("ox");$("#resultExit").onclick=()=>{hideResult();leave()};
    }else{
      $("#oxStatus").textContent=`${winner} 승리 · 다음 판을 시작하세요`;
      $("#oxReset").classList.remove("hidden");
@@ -698,6 +702,7 @@ async function setupOXOnline(){
    // 선택한 칸이 더 이상 내 말이 아니면 선택 해제
    if(oxSelected!==null&&ox.board[oxSelected]!==myMark)oxSelected=null;
    renderOX();
+   if(st.over){const rw=st.roundWins||{X:0,O:0};const winner=rw.X>=3?"X":rw.O>=3?"O":null;if(winner){const key=`ox_${room}_${st.finishedAt||rw.X+"_"+rw.O}`;if(sessionStorage.getItem(key)!=="1"){sessionStorage.setItem(key,"1");const mine=winner===myMark;recordGame("ox",mine?"win":"loss",0,"online");showResult(mine?"🏆 OX 승리":"OX 패배",`${rw[myMark]||0} : ${rw[myMark==="X"?"O":"X"]||0}`,"다시 대전하기","방에서 나가기");$("#resultRetry").onclick=()=>requestRematch("ox");$("#resultExit").onclick=()=>{hideResult();leave()}}}else{$("#oxReset").classList.remove("hidden");$("#oxStatus").textContent="이번 판 종료 · 다음 판을 시작하세요"}}
  };
  const rematchRef=roomRef.child("rematch");
  const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null});await stateRef.set({type:"ox",board:Array(9).fill(""),turn:"X",roundWins:{X:0,O:0},over:false});hideResult()};
@@ -706,10 +711,30 @@ async function setupOXOnline(){
  unsub=()=>{stateRef.off("value",cb);rematchRef.off("value",rematchCb)};
 }
 
+/* FORTRESS TERRAIN SELECT */
+const TERRAINS=[
+ {id:"extreme_canyon",name:"극한 협곡",level:"아주 어려움",fn:x=>300+78*Math.sin(x/72)+34*Math.sin(x/27)},
+ {id:"twin_cliff",name:"쌍봉 절벽",level:"아주 어려움",fn:x=>x<430?355-105*Math.exp(-Math.pow((x-215)/95,2)):355-105*Math.exp(-Math.pow((x-645)/95,2))},
+ {id:"deep_valley",name:"깊은 계곡",level:"어려움",fn:x=>245+125*Math.exp(-Math.pow((x-430)/150,2))},
+ {id:"steep_mountain",name:"급경사 산악",level:"어려움",fn:x=>335-95*Math.sin(x/115)-20*Math.sin(x/35)},
+ {id:"multi_hill",name:"다중 언덕",level:"약간 어려움",fn:x=>315+48*Math.sin(x/66)+18*Math.sin(x/24)},
+ {id:"central_high",name:"중앙 고지대",level:"보통",fn:x=>340-82*Math.exp(-Math.pow((x-430)/155,2))},
+ {id:"soft_valley",name:"완만한 계곡",level:"보통",fn:x=>290+55*Math.exp(-Math.pow((x-430)/190,2))},
+ {id:"low_hills",name:"낮은 언덕",level:"쉬움",fn:x=>315+24*Math.sin(x/105)+10*Math.sin(x/47)},
+ {id:"flat_meadow",name:"평탄 초원",level:"쉬움",fn:x=>320+9*Math.sin(x/150)},
+ {id:"practice",name:"연습 평지",level:"매우 쉬움",fn:x=>320}
+];
+let selectedTerrain=null,chosenTerrainId="low_hills",terrainWatchOff=null;
+function terrainById(id){return TERRAINS.find(t=>t.id===id)||TERRAINS[7]}
+function drawTerrainThumb(canvas,t){const c=canvas.getContext("2d");c.clearRect(0,0,220,78);c.fillStyle="#75c8ff";c.fillRect(0,0,220,78);c.beginPath();c.moveTo(0,t.fn(0)/6);for(let x=0;x<=220;x+=3)c.lineTo(x,t.fn(x*860/220)/6);c.lineTo(220,78);c.lineTo(0,78);c.closePath();c.fillStyle="#6f5439";c.fill()}
+function renderTerrainCards(){const g=$("#terrainGrid");g.innerHTML="";TERRAINS.forEach(t=>{const b=document.createElement("button");b.className="terrain-card"+(selectedTerrain===t.id?" selected":"");b.innerHTML=`<canvas class="terrain-thumb" width="220" height="78"></canvas><div class="terrain-name">${t.name}</div><div class="terrain-level">${t.level}</div>`;b.onclick=()=>{selectedTerrain=t.id;renderTerrainCards();$("#terrainConfirm").disabled=false};g.appendChild(b);drawTerrainThumb(b.querySelector("canvas"),t)})}
+async function startTerrainSelection(){screen("terrainSelect");selectedTerrain=null;$("#terrainConfirm").disabled=true;$("#terrainWait").classList.add("hidden");$("#terrainGuide").textContent=mode==="online"?"각자 지형을 선택하면 둘 중 하나가 무작위로 결정됩니다.":"플레이할 지형을 하나 선택하세요.";renderTerrainCards();if(mode==="online"){await roomRef.child("terrainChoices/"+uid).remove().catch(()=>{});const resultRef=roomRef.child("terrainResult"),choicesRef=roomRef.child("terrainChoices");const resultCb=snap=>{const id=snap.val();if(id){chosenTerrainId=id;if(terrainWatchOff)terrainWatchOff();$("#terrainWait").classList.remove("hidden");$("#terrainWait").textContent=`이번 경기 지형: ${terrainById(id).name}`;setTimeout(()=>startFortress(),900)}};const choicesCb=async snap=>{if(!isHost)return;const v=snap.val()||{};if(Object.keys(v).length<2)return;const picks=Object.values(v),result=picks[0]===picks[1]?picks[0]:picks[Math.floor(Math.random()*2)];await roomRef.update({terrainResult:result,terrainChoices:null})};resultRef.on("value",resultCb);choicesRef.on("value",choicesCb);terrainWatchOff=()=>{resultRef.off("value",resultCb);choicesRef.off("value",choicesCb)}}}
+$("#terrainConfirm").onclick=async()=>{if(!selectedTerrain)return;if(mode!=="online"){chosenTerrainId=selectedTerrain;startFortress();return}$("#terrainConfirm").disabled=true;$("#terrainWait").classList.remove("hidden");await roomRef.child("terrainChoices/"+uid).set(selectedTerrain)}
+
 /* FORTRESS - 탱크 방향 고정, 좌우 이동, 각도/파워 별도 조절 */
 const can=$("#fortCanvas"),ctx=can.getContext("2d");
 let ft,anim=false,holdTimer=null,holdDelay=null;
-function baseTerrainY(x){return 315+35*Math.sin(x/105)+18*Math.sin(x/47)}
+function baseTerrainY(x){return terrainById(chosenTerrainId).fn(x)}
 function terrainY(x){let y=baseTerrainY(x);for(const c of (ft?.craters||[])){const d=Math.abs(x-c.x);if(d<c.r)y+=c.depth*(1-Math.pow(d/c.r,2));}return Math.min(410,y)}
 function newFT(){
  return{
@@ -724,7 +749,7 @@ function newFT(){
 
 function startFortress(){
  screen("fortress");
- ft=newFT();
+ ft=newFT();ft.terrainId=chosenTerrainId;
  if(mode==="online")setupFortOnline();
  renderFT();
 }
@@ -774,7 +799,8 @@ function renderFT(){
  `<div class="player me"><b>${esc(nickname)}</b><div class="score">${ft.wins[me]}승 · HP ${ft.tanks[me].hp}</div></div>
  <div class="player"><b>${mode==="solo"?"PC":"상대"}</b><div class="score">${ft.wins[other]}승 · HP ${ft.tanks[other].hp}</div></div>`;
 
- $("#fortInfo").textContent=`위치 ${Math.round(t.x)} · 포신 각도 ${t.angle}° · 파워 ${t.power}`;
+ $("#fortInfo").textContent=`지형 ${terrainById(ft.terrainId||chosenTerrainId).name} · 위치 ${Math.round(t.x)} · 포신 각도 ${t.angle}° · 파워 ${t.power}`;
+ const tb=$("#trajectoryBtn");tb.classList.toggle("trajectory-on",!!ft.showTrajectory&&!ft.trajectoryUsed[me]);tb.textContent=ft.trajectoryUsed[me]?"✓ 사용 완료":ft.showTrajectory?"✨ 궤적 ON":"✨ 궤적 ×1";
  const active=!ft.over&&!anim&&ft.turn===me;
  ["moveLeft","moveRight","angleDown","angleUp","powerDown","powerUp","fireBtn","trajectoryBtn"].forEach(id=>$("#"+id).disabled=!active);
  drawFT();
@@ -823,7 +849,7 @@ function syncFT(){
 }
 
 
-function drawTrajectory(shooter){const p=shotVector(shooter);ctx.save();ctx.fillStyle="rgba(255,255,255,.75)";for(let i=0;i<180;i++){p.x+=p.vx;p.y+=p.vy;p.vy+=.16;if(i%8===0){ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill()}if(p.x<0||p.x>860||p.y>terrainY(Math.max(0,Math.min(860,p.x))))break}ctx.restore()}
+function drawTrajectory(shooter){const p=shotVector(shooter);ctx.save();ctx.shadowColor="rgba(0,0,0,.75)";ctx.shadowBlur=4;ctx.fillStyle="#fde047";for(let i=0;i<180;i++){p.x+=p.vx;p.y+=p.vy;p.vy+=.16;if(i%5===0){ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill()}if(p.x<0||p.x>860||p.y>terrainY(Math.max(0,Math.min(860,p.x))))break}ctx.restore()}
 $("#trajectoryBtn").onclick=()=>{const me=myFTIndex();if(ft.trajectoryUsed[me])return toast("이번 경기의 궤적 아이템을 이미 사용했습니다.");ft.showTrajectory=!ft.showTrajectory;renderFT()};
 function shotVector(shooter){
  const t=ft.tanks[shooter];
@@ -949,7 +975,7 @@ function pcFT(){
 $("#fortNext").onclick=()=>{
  const keepWins=[...ft.wins];
  const keepMe=ft.me;
- ft=newFT();
+ ft=newFT();ft.terrainId=chosenTerrainId;
  ft.wins=keepWins;
  if(mode==="online")ft.me=keepMe;
  $("#fortNext").classList.add("hidden");
@@ -961,7 +987,7 @@ async function setupFortOnline(){
  const ps=(await roomRef.child("players").once("value")).val()||{};
  const ids=Object.keys(ps), me=ids.indexOf(uid);
  if(isHost){
-   ft.me=0;
+   ft.me=0;ft.terrainId=chosenTerrainId;
    await roomRef.child("state").set(ft);
  }else ft.me=me;
 
@@ -969,12 +995,12 @@ async function setupFortOnline(){
  const cb=s=>{
    const st=s.val();
    if(!st)return;
-   st.me=me;
+   st.me=me;chosenTerrainId=st.terrainId||chosenTerrainId;
    ft=st;
    renderFT();
  };
  const rematchRef=roomRef.child("rematch");
- const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;const fresh=newFT();fresh.me=0;await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null});await stateRef.set(fresh);hideResult()};
+ const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null,state:null,terrainResult:null,terrainChoices:null});hideResult();startTerrainSelection()};
  rematchRef.on("value",rematchCb);
  stateRef.on("value",cb);
  unsub=()=>{stateRef.off("value",cb);rematchRef.off("value",rematchCb)};
@@ -986,7 +1012,7 @@ document.addEventListener("gesturestart",e=>e.preventDefault());
 /* Hall */
 async function finishOnline(kind,winner){
  if(winner!==uid)return;
- if(kind==="chosung")recordGame("chosung","win")
+ 
  let ref=db.ref("hall/"+uid);await ref.transaction(v=>({nick:nickname,total:(v?.total||0)+1,updated:Date.now()}));
  toast("우승 기록이 저장되었습니다.");
 }

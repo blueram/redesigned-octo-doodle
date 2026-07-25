@@ -37,18 +37,18 @@
     .rulebox{background:#0f172a;border:1px solid #334155;border-radius:15px;padding:12px 14px;margin:12px 0;line-height:1.6}.rulebox b{color:#7dd3fc}.qbox{text-align:center;padding:25px 12px;background:#0f172a;border-radius:18px;margin:14px 0}.chosung{font-size:54px;font-weight:950;letter-spacing:10px}.cho-hint{font-size:24px;font-weight:900;line-height:1.5;color:#fef3c7;margin-top:14px;min-height:72px;display:flex;align-items:center;justify-content:center;text-align:center}.cho-hint b{color:#7dd3fc;margin-right:8px}
     .progress{height:10px;background:#0f172a;border-radius:99px;overflow:hidden}.progress>i{display:block;height:100%;background:#38bdf8;width:0}
     canvas{width:100%;max-width:860px;background:linear-gradient(#75c8ff 0 58%,#7c5b3c 58%);border-radius:18px;border:1px solid var(--line);touch-action:none}
-    .tank-controls{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.tank-controls button{padding:12px 6px}
+    .tank-controls{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.tank-controls button{padding:12px 6px}.terrain-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.terrain-card{padding:8px;background:#0f172a;border:2px solid #334155;text-align:left}.terrain-card.selected{border-color:#38bdf8;box-shadow:0 0 0 3px rgba(56,189,248,.22)}.terrain-thumb{width:100%;height:78px;border-radius:10px;background:#75c8ff;display:block}.terrain-name{font-size:13px;margin-top:6px}.terrain-level{font-size:11px;color:#94a3b8}.trajectory-on{background:linear-gradient(135deg,#0891b2,#2563eb)!important;box-shadow:0 0 0 3px rgba(56,189,248,.3)}
     .ranking{width:100%;border-collapse:collapse}.ranking td,.ranking th{padding:10px;border-bottom:1px solid var(--line);text-align:left}
     .result-modal{position:fixed;inset:0;background:rgba(2,6,23,.78);display:grid;place-items:center;z-index:200;padding:18px}.result-box{width:min(430px,100%);background:#172033;border:1px solid #475569;border-radius:24px;padding:24px;text-align:center}.result-title{font-size:28px;font-weight:950}.result-detail{font-size:18px;line-height:1.7;margin:16px 0}.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#020617;color:#fff;padding:11px 16px;border-radius:999px;z-index:99;opacity:0;transition:.2s;pointer-events:none}.toast.show{opacity:1}
-    @media(max-width:650px){.games{grid-template-columns:1fr}.game-card{min-height:105px}.players{grid-template-columns:1fr}.chosung{font-size:46px}.wrap{padding:11px}.card{padding:15px}.tank-controls{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:650px){.terrain-grid{grid-template-columns:repeat(2,1fr)}.games{grid-template-columns:1fr}.game-card{min-height:105px}.players{grid-template-columns:1fr}.chosung{font-size:46px}.wrap{padding:11px}.card{padding:15px}.tank-controls{grid-template-columns:repeat(2,1fr)}}
   .version-badge{position:fixed;top:8px;right:10px;z-index:9999;background:#0f172a;color:#7dd3fc;border:1px solid #334155;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900;box-shadow:0 4px 14px rgba(0,0,0,.25);letter-spacing:.3px}
 </style>
 </head>
 <body>
-<div id="appVersion" class="version-badge">MiniGame V3.0</div>
+<div id="appVersion" class="version-badge">MiniGame V3.1</div>
 <div class="wrap">
   <div class="top">
-    <div class="logo">🎮 Mini<span>Game</span> V3</div>
+    <div class="logo">🎮 Mini<span>Game</span> V3.1</div>
     <button id="homeBtn" class="hidden">🏠 홈</button>
   </div>
 
@@ -112,6 +112,16 @@
       <div id="oxPlayers" class="players"></div>
       <div id="oxBoard" class="ox-board"></div>
       <button id="oxReset" class="primary hidden" style="width:100%">다음 판</button>
+    </div>
+  </section>
+
+  <section id="terrainSelect" class="screen">
+    <div class="card">
+      <h2>🗺️ 포트리스 지형 선택</h2>
+      <div class="muted" id="terrainGuide">플레이할 지형을 하나 선택하세요.</div>
+      <div id="terrainGrid" class="terrain-grid" style="margin-top:14px"></div>
+      <div id="terrainWait" class="rulebox hidden" style="text-align:center">상대방의 지형 선택을 기다리는 중...</div>
+      <button id="terrainConfirm" class="primary" style="width:100%;margin-top:14px" disabled>이 지형으로 시작</button>
     </div>
   </section>
 
