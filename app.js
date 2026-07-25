@@ -164,7 +164,65 @@ const W=canvas.width,H=canvas.height,gravity=210;
 let terrain=[],player,ai,projectile,fortressState,aiShotTarget,aiShotsUntilHit,aiShotsTaken,explosion;
 function groundY(x){const idx=Math.max(0,Math.min(W-1,Math.round(x)));return terrain[idx]??430}
 function makeTerrain(){
-  terrain=Array.from({length:W},(_,x)=>390+34*Math.sin(x/115)+20*Math.sin(x/43)+Math.max(0,80-Math.abs(x-500)*.42));
+  // 급경사가 적은 완만한 산 지형을 매 게임 조금씩 다르게 생성
+  const phase1=Math.random()*Math.PI*2;
+  const phase2=Math.random()*Math.PI*2;
+  terrain=Array.from({length:W},(_,x)=>{
+    const broad=24*Math.sin(x/185+phase1);
+    const middle=12*Math.sin(x/88+phase2);
+    const centerHill=-34*Math.exp(-Math.pow((x-500)/230,2));
+    return Math.max(330,Math.min(455,408+broad+middle+centerHill));
+  });
+
+  // 시작 지점 주변은 탱크가 안정적으로 놓이도록 부드럽게 평탄화
+  smoothStartArea(130,72);
+  smoothStartArea(870,72);
+}
+function smoothStartArea(center,radius){
+  const centerY=terrain[Math.round(center)];
+  for(let x=Math.max(0,Math.floor(center-radius));x<=Math.min(W-1,Math.ceil(center+radius));x++){
+    const d=Math.abs(x-center)/radius;
+    const blend=Math.pow(Math.max(0,1-d),2);
+    terrain[x]=terrain[x]*(1-blend)+centerY*blend;
+  }
+}
+function carveCrater(cx,radius=48,depth=34){
+  const from=Math.max(0,Math.floor(cx-radius));
+  const to=Math.min(W-1,Math.ceil(cx+radius));
+  for(let x=from;x<=to;x++){
+    const dx=(x-cx)/radius;
+    if(Math.abs(dx)>1)continue;
+    // 중앙이 깊고 가장자리로 갈수록 자연스럽게 얕아지는 포물형 분화구
+    const amount=depth*(1-dx*dx);
+    terrain[x]=Math.min(H-18,terrain[x]+amount);
+  }
+}
+function settleTank(t){
+  t.y=groundY(t.x)-16;
+}
+function settleAllTanks(){
+  settleTank(player);
+  settleTank(ai);
+}
+function findStableTankX(currentX,minX,maxX,distance){
+  const direction=Math.random()<.5?-1:1;
+  const first=Math.max(minX,Math.min(maxX,currentX+direction*distance));
+  const candidates=[];
+  for(let offset=0;offset<=55;offset+=5){
+    candidates.push(first-offset,first+offset);
+  }
+  for(const x of candidates){
+    if(x<minX||x>maxX)continue;
+    const left=groundY(x-22),right=groundY(x+22);
+    if(Math.abs(left-right)<=22)return x;
+  }
+  return first;
+}
+function moveAiRandomlyAfterHit(){
+  const distance=45+Math.floor(Math.random()*116); // 45~160px 랜덤 이동
+  ai.x=findStableTankX(ai.x,545,965,distance);
+  settleTank(ai);
+  return distance;
 }
 function tankAt(x,side){
   return {x,y:groundY(x)-16,side,hp:100,angle:side==="player"?45:135,power:60};
@@ -222,17 +280,43 @@ function stepProjectile(now){
 }
 function finishShot(hit){
   const owner=projectile.owner;projectile=null;
+  let aiWasHit=false;
   if(hit){
     explosion={x:hit.x,y:hit.y,r:1};
-    const target=owner==="player"?ai:player;const d=Math.abs(hit.x-target.x);
-    if(d<58){const damage=d<22?40:25;target.hp=Math.max(0,target.hp-damage);$("fortressMessage").textContent=`명중! ${damage} 피해`}
-    else $("fortressMessage").textContent=d<110?"아깝습니다! 근처에 떨어졌습니다.":"빗나갔습니다.";
+
+    // 포탄이 떨어진 지형을 파낸 뒤 탱크를 변경된 지면에 안착
+    carveCrater(hit.x,48,34);
+    settleAllTanks();
+
+    const target=owner==="player"?ai:player;
+    const d=Math.abs(hit.x-target.x);
+    if(d<58){
+      const damage=d<22?40:25;
+      target.hp=Math.max(0,target.hp-damage);
+      aiWasHit=owner==="player";
+      $("fortressMessage").textContent=`명중! ${damage} 피해`;
+    }else{
+      $("fortressMessage").textContent=d<110?"아깝습니다! 근처에 떨어졌습니다.":"빗나갔습니다.";
+    }
+
+    // 내 포탄에 PC 탱크가 맞으면 좌우·거리를 랜덤으로 이동
+    if(aiWasHit&&ai.hp>0){
+      const moved=moveAiRandomlyAfterHit();
+      $("fortressMessage").textContent+=` · PC 탱크가 약 ${moved}px 이동`;
+    }
     animateExplosion();
   }
   updateFortressUi();
-  if(player.hp<=0||ai.hp<=0){fortressState="over";$("fortressMessage").textContent=ai.hp<=0?"승리했습니다! 🏆":"PC가 승리했습니다.";updateFortressUi();drawFortress();return}
-  if(owner==="player"){fortressState="ai";updateFortressUi();setTimeout(aiTurn,800)}
-  else{fortressState="player";updateFortressUi()}
+  if(player.hp<=0||ai.hp<=0){
+    fortressState="over";
+    $("fortressMessage").textContent=ai.hp<=0?"승리했습니다! 🏆":"PC가 승리했습니다.";
+    updateFortressUi();drawFortress();return;
+  }
+  if(owner==="player"){
+    fortressState="ai";updateFortressUi();setTimeout(aiTurn,800);
+  }else{
+    fortressState="player";updateFortressUi();
+  }
 }
 function animateExplosion(){
   if(!explosion)return;explosion.r+=5;drawFortress();
@@ -247,8 +331,7 @@ function ballisticAngleForDistance(distance,power,high=false){
 function aiTurn(){
   if(fortressState!=="ai")return;
   aiShotsTaken++;
-  ai.x=Math.max(545,Math.min(965,ai.x+(Math.random()>.5?1:-1)*(5+Math.floor(Math.random()*4))));
-  ai.y=groundY(ai.x)-16;
+  settleTank(ai);
   const distance=ai.x-player.x;
   const forceHit=aiShotsTaken>=aiShotsUntilHit;
   const basePower=62;
