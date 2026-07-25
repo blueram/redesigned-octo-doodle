@@ -34,7 +34,7 @@
     .player.me{border-color:#38bdf8}.score{font-size:30px;font-weight:950}
     .ox-board{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;max-width:430px;margin:16px auto}
     .ox-cell{aspect-ratio:1;background:#0f172a;border:1px solid var(--line);font-size:48px;display:grid;place-items:center;border-radius:18px}
-    .rulebox{background:#0f172a;border:1px solid #334155;border-radius:15px;padding:12px 14px;margin:12px 0;line-height:1.6}.rulebox b{color:#7dd3fc}.qbox{text-align:center;padding:25px 12px;background:#0f172a;border-radius:18px;margin:14px 0}.chosung{font-size:54px;font-weight:950;letter-spacing:10px}
+    .rulebox{background:#0f172a;border:1px solid #334155;border-radius:15px;padding:12px 14px;margin:12px 0;line-height:1.6}.rulebox b{color:#7dd3fc}.qbox{text-align:center;padding:25px 12px;background:#0f172a;border-radius:18px;margin:14px 0}.chosung{font-size:54px;font-weight:950;letter-spacing:10px}.cho-hint{font-size:24px;font-weight:900;line-height:1.5;color:#fef3c7;margin-top:14px;min-height:72px;display:flex;align-items:center;justify-content:center;text-align:center}.cho-hint b{color:#7dd3fc;margin-right:8px}
     .progress{height:10px;background:#0f172a;border-radius:99px;overflow:hidden}.progress>i{display:block;height:100%;background:#38bdf8;width:0}
     canvas{width:100%;max-width:860px;background:linear-gradient(#75c8ff 0 58%,#7c5b3c 58%);border-radius:18px;border:1px solid var(--line);touch-action:none}
     .tank-controls{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.tank-controls button{padding:12px 6px}
@@ -95,11 +95,11 @@
   <section id="chosung" class="screen">
     <div class="card">
       <div class="row"><span class="pill" id="choMode">혼자</span><span class="pill" id="choRound">1 / 10</span><span class="pill" id="choTime">0.0초</span></div>
+      <div id="choScores" class="players" style="margin:12px 0"></div>
       <div class="rulebox"><b>게임 방법</b><br>단어의 첫 자음만 표시됩니다. 초성을 보고 원래 단어를 입력하세요.<br><span class="muted">예: ㅅㅂ → 수박 · ㄱㅇㅈ → 강아지</span></div>
-      <div class="qbox"><div class="muted">초성을 보고 단어를 맞혀보세요</div><div class="chosung" id="choQ">ㄱㅁ</div><div id="choHint" class="muted"></div></div>
+      <div class="qbox"><div class="muted">초성을 보고 단어를 맞혀보세요</div><div class="chosung" id="choQ">ㄱㅁ</div><div id="choHint" class="cho-hint"></div></div>
       <div class="row"><input id="choAnswer" autocomplete="off" placeholder="정답 입력"><button id="choSubmit" class="primary">정답</button></div>
       <div style="height:12px"></div><div class="progress"><i id="choProgress"></i></div>
-      <div id="choScores" class="players" style="margin-top:12px"></div>
     </div>
   </section>
 
