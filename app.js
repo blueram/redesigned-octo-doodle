@@ -96,73 +96,476 @@ async function setupChoOnline(){
 }
 function renderChoScores(){roomRef.child("players").once("value").then(s=>{$("#choScores").innerHTML=Object.entries(s.val()||{}).map(([id,p])=>`<div class="player ${id===uid?"me":""}"><b>${esc(p.nick)}</b><div class="score">${choScores[id]||0}</div></div>`).join("")})}
 
-/* OX */
-let ox={board:Array(9).fill(""),turn:"X",me:"X",roundWins:{X:0,O:0},over:false},oxAI=false;
+/* OX - 각자 3개 배치 후 자기 말을 빈칸으로 이동 */
+let ox={board:Array(9).fill(""),turn:"X",me:"X",roundWins:{X:0,O:0},over:false},oxSelected=null;
 const wins=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+
 function startOX(){
- screen("ox");oxAI=mode==="solo";ox={board:Array(9).fill(""),turn:"X",me:"X",roundWins:{X:0,O:0},over:false};
+ screen("ox");
+ ox={board:Array(9).fill(""),turn:"X",me:"X",roundWins:{X:0,O:0},over:false};
+ oxSelected=null;
  buildOX();
- if(mode==="online")setupOXOnline();else renderOX();
-}
-function buildOX(){$("#oxBoard").innerHTML="";for(let i=0;i<9;i++){let b=document.createElement("button");b.className="ox-cell";b.onclick=()=>oxMove(i);$("#oxBoard").appendChild(b)}}
-function oxMove(i){
- if(ox.over||ox.board[i]||ox.turn!==ox.me)return;
- ox.board[i]=ox.me;afterOXMove();
- if(mode==="online")roomRef.child("state").set(ox);
- else if(!ox.over){ox.turn="O";renderOX();setTimeout(oxAIMove,400)}
-}
-function oxAIMove(){let empty=ox.board.map((v,i)=>v?"":i).filter(v=>v!=="");if(!empty.length)return;let i=bestOX("O")??bestOX("X")??empty[Math.floor(Math.random()*empty.length)];ox.board[i]="O";afterOXMove();if(!ox.over)ox.turn="X";renderOX()}
-function bestOX(mark){for(let line of wins){let vals=line.map(i=>ox.board[i]);if(vals.filter(v=>v===mark).length===2&&vals.includes(""))return line[vals.indexOf("")]}return null}
-function oxWinner(){for(let l of wins)if(ox.board[l[0]]&&ox.board[l[0]]===ox.board[l[1]]&&ox.board[l[1]]===ox.board[l[2]])return ox.board[l[0]];return ox.board.every(Boolean)?"D":null}
-function afterOXMove(){let w=oxWinner();if(w){ox.over=true;if(w!=="D")ox.roundWins[w]=(ox.roundWins[w]||0)+1;renderOX();if(ox.roundWins[w]>=3){if((mode==="solo"&&w==="X")||(mode==="online"&&w===ox.me)){stats.oxWins++;saveStats();if(mode==="online")finishOnline("ox",uid)}$("#oxStatus").textContent=(w==="D"?"무승부":w+" 승리")+" · 경기 종료"}else $("#oxReset").classList.remove("hidden")}else ox.turn=ox.turn==="X"?"O":"X"}
-$("#oxReset").onclick=()=>{ox.board=Array(9).fill("");ox.turn="X";ox.over=false;$("#oxReset").classList.add("hidden");if(mode==="online")roomRef.child("state").set(ox);else renderOX()};
-function renderOX(){
- $$("#oxBoard .ox-cell").forEach((b,i)=>b.textContent=ox.board[i]);
- $("#oxStatus").textContent=ox.over?"한 판 종료":(ox.turn===ox.me?"내 차례":"상대 차례");
- $("#oxPlayers").innerHTML=`<div class="player me"><b>${esc(nickname)} (X)</b><div class="score">${ox.roundWins.X||0}</div></div><div class="player"><b>${mode==="solo"?"PC":"상대"} (O)</b><div class="score">${ox.roundWins.O||0}</div></div>`;
-}
-async function setupOXOnline(){
- const ps=(await roomRef.child("players").once("value")).val()||{},ids=Object.keys(ps);ox.me=ids[0]===uid?"X":"O";
- if(isHost)await roomRef.child("state").set(ox);
- const cb=s=>{let st=s.val();if(!st)return;let me=ox.me;ox=st;ox.me=me;renderOX()};
- roomRef.child("state").on("value",cb);unsub=()=>roomRef.child("state").off("value",cb);
+ if(mode==="online")setupOXOnline(); else renderOX();
 }
 
-/* FORTRESS */
-const can=$("#fortCanvas"),ctx=can.getContext("2d");
-let ft,anim=false;
-function terrainY(x){return 315+35*Math.sin(x/105)+18*Math.sin(x/47)}
-function newFT(){return{tanks:[{x:100,hp:100,angle:45,power:55},{x:760,hp:100,angle:135,power:55}],turn:0,wins:[0,0],over:false}}
-function startFortress(){screen("fortress");ft=newFT();if(mode==="online")setupFortOnline();drawFT();renderFT()}
-function drawFT(){
- ctx.clearRect(0,0,can.width,can.height);let g=ctx.createLinearGradient(0,0,0,430);g.addColorStop(0,"#66c7ff");g.addColorStop(.7,"#d7f0ff");ctx.fillStyle=g;ctx.fillRect(0,0,860,430);
- ctx.beginPath();ctx.moveTo(0,terrainY(0));for(let x=0;x<=860;x+=4)ctx.lineTo(x,terrainY(x));ctx.lineTo(860,430);ctx.lineTo(0,430);ctx.closePath();ctx.fillStyle="#6f5439";ctx.fill();
- ft.tanks.forEach((t,i)=>{let y=terrainY(t.x)-13;ctx.fillStyle=i===0?"#2563eb":"#dc2626";ctx.fillRect(t.x-18,y-8,36,16);ctx.beginPath();ctx.arc(t.x,y-10,10,0,Math.PI*2);ctx.fill();let rad=t.angle*Math.PI/180;ctx.strokeStyle="#111827";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(t.x,y-12);ctx.lineTo(t.x+Math.cos(rad)*28,y-12-Math.sin(rad)*28);ctx.stroke();ctx.fillStyle="#fff";ctx.fillText(`${t.hp}`,t.x-9,y-28)});
+function buildOX(){
+ $("#oxBoard").innerHTML="";
+ for(let i=0;i<9;i++){
+   const b=document.createElement("button");
+   b.className="ox-cell";
+   b.onclick=()=>oxCellClick(i);
+   $("#oxBoard").appendChild(b);
+ }
 }
+
+function oxCount(mark){return ox.board.filter(v=>v===mark).length}
+function oxPhase(mark){return oxCount(mark)<3?"place":"move"}
+
+function oxCellClick(i){
+ if(ox.over||ox.turn!==ox.me)return;
+ const mark=ox.me;
+
+ if(oxPhase(mark)==="place"){
+   if(ox.board[i])return toast("빈칸을 선택해 주세요.");
+   ox.board[i]=mark;
+   finishOXTurn();
+   return;
+ }
+
+ if(oxSelected===null){
+   if(ox.board[i]!==mark)return toast("이동할 내 말을 먼저 선택해 주세요.");
+   oxSelected=i;
+   renderOX();
+   return;
+ }
+
+ if(i===oxSelected){
+   oxSelected=null;
+   renderOX();
+   return;
+ }
+
+ if(ox.board[i]===mark){
+   oxSelected=i;
+   renderOX();
+   return;
+ }
+
+ if(ox.board[i])return toast("빈칸으로만 이동할 수 있습니다.");
+
+ ox.board[i]=mark;
+ ox.board[oxSelected]="";
+ oxSelected=null;
+ finishOXTurn();
+}
+
+function oxWinner(){
+ for(const l of wins){
+   if(ox.board[l[0]]&&ox.board[l[0]]===ox.board[l[1]]&&ox.board[l[1]]===ox.board[l[2]])return ox.board[l[0]];
+ }
+ return null;
+}
+
+function finishOXTurn(){
+ const winner=oxWinner();
+ if(winner){
+   ox.over=true;
+   ox.roundWins[winner]=(ox.roundWins[winner]||0)+1;
+   renderOX();
+
+   if(ox.roundWins[winner]>=3){
+     const myWin=(mode==="solo"&&winner==="X")||(mode==="online"&&winner===ox.me);
+     if(myWin){
+       stats.oxWins++;
+       saveStats();
+       if(mode==="online")finishOnline("ox",uid);
+     }
+     $("#oxStatus").textContent=`${winner} 최종 승리 · 3승 달성`;
+   }else{
+     $("#oxStatus").textContent=`${winner} 승리 · 다음 판을 시작하세요`;
+     $("#oxReset").classList.remove("hidden");
+   }
+   if(mode==="online")roomRef.child("state").set(ox);
+   return;
+ }
+
+ ox.turn=ox.turn==="X"?"O":"X";
+ renderOX();
+ if(mode==="online")roomRef.child("state").set(ox);
+ else if(ox.turn==="O")setTimeout(oxAIMove,450);
+}
+
+function emptyOX(){return ox.board.map((v,i)=>v?null:i).filter(v=>v!==null)}
+function allOXMoves(mark){
+ const own=ox.board.map((v,i)=>v===mark?i:null).filter(v=>v!==null);
+ const empty=emptyOX(), result=[];
+ own.forEach(from=>empty.forEach(to=>result.push({from,to})));
+ return result;
+}
+function testPlacement(mark){
+ if(oxCount(mark)>=3)return null;
+ for(const i of emptyOX()){
+   ox.board[i]=mark;
+   const win=oxWinner()===mark;
+   ox.board[i]="";
+   if(win)return i;
+ }
+ return null;
+}
+function testMovement(mark){
+ if(oxCount(mark)<3)return null;
+ for(const m of allOXMoves(mark)){
+   ox.board[m.from]="";
+   ox.board[m.to]=mark;
+   const win=oxWinner()===mark;
+   ox.board[m.to]="";
+   ox.board[m.from]=mark;
+   if(win)return m;
+ }
+ return null;
+}
+
+function oxAIMove(){
+ if(ox.over||ox.turn!=="O")return;
+
+ if(oxPhase("O")==="place"){
+   let i=testPlacement("O");
+   if(i===null)i=testPlacement("X");
+   if(i===null){
+     const choices=[4,0,2,6,8,1,3,5,7].filter(x=>!ox.board[x]);
+     i=choices[Math.floor(Math.random()*Math.min(choices.length,3))];
+   }
+   ox.board[i]="O";
+ }else{
+   let move=testMovement("O");
+   if(!move)move=testMovement("X");
+   if(!move){
+     const choices=allOXMoves("O");
+     move=choices[Math.floor(Math.random()*choices.length)];
+   }
+   if(move){
+     ox.board[move.from]="";
+     ox.board[move.to]="O";
+   }
+ }
+ finishOXTurn();
+}
+
+$("#oxReset").onclick=()=>{
+ const winsKeep={...ox.roundWins}, mark=ox.me;
+ ox={board:Array(9).fill(""),turn:"X",me:mark,roundWins:winsKeep,over:false};
+ oxSelected=null;
+ $("#oxReset").classList.add("hidden");
+ renderOX();
+ if(mode==="online")roomRef.child("state").set(ox);
+ else if(ox.me==="O")setTimeout(oxAIMove,350);
+};
+
+function renderOX(){
+ $$("#oxBoard .ox-cell").forEach((b,i)=>{
+   b.textContent=ox.board[i];
+   b.style.outline=i===oxSelected?"4px solid #38bdf8":"none";
+   b.style.transform=i===oxSelected?"scale(.93)":"";
+ });
+
+ if(!ox.over){
+   if(ox.turn!==ox.me)$("#oxStatus").textContent="상대 차례";
+   else if(oxPhase(ox.me)==="place")$("#oxStatus").textContent=`빈칸에 ${ox.me} 놓기 · ${oxCount(ox.me)+1}/3`;
+   else if(oxSelected===null)$("#oxStatus").textContent="이동할 내 말을 선택하세요";
+   else $("#oxStatus").textContent="이동할 빈칸을 선택하세요";
+ }
+
+ const other=ox.me==="X"?"O":"X";
+ $("#oxPlayers").innerHTML=
+ `<div class="player me"><b>${esc(nickname)} (${ox.me})</b><div class="score">${ox.roundWins[ox.me]||0}승 · 말 ${oxCount(ox.me)}개</div></div>
+ <div class="player"><b>${mode==="solo"?"PC":"상대"} (${other})</b><div class="score">${ox.roundWins[other]||0}승 · 말 ${oxCount(other)}개</div></div>`;
+}
+
+async function setupOXOnline(){
+ const ps=(await roomRef.child("players").once("value")).val()||{};
+ const ids=Object.keys(ps);
+ ox.me=ids[0]===uid?"X":"O";
+ if(isHost)await roomRef.child("state").set(ox);
+
+ const stateRef=roomRef.child("state");
+ const cb=s=>{
+   const st=s.val();
+   if(!st)return;
+   const myMark=ox.me;
+   ox=st;
+   ox.me=myMark;
+   oxSelected=null;
+   renderOX();
+ };
+ stateRef.on("value",cb);
+ unsub=()=>stateRef.off("value",cb);
+}
+
+/* FORTRESS - 탱크 방향 고정, 좌우 이동, 각도/파워 별도 조절 */
+const can=$("#fortCanvas"),ctx=can.getContext("2d");
+let ft,anim=false,holdTimer=null,holdDelay=null;
+
+function terrainY(x){return 315+35*Math.sin(x/105)+18*Math.sin(x/47)}
+function newFT(){
+ return{
+   tanks:[
+     {x:100,hp:100,angle:45,power:55},
+     {x:760,hp:100,angle:45,power:55}
+   ],
+   turn:0,wins:[0,0],over:false,
+   ai:{shots:0,hitAt:5+Math.floor(Math.random()*6)}
+ };
+}
+
+function startFortress(){
+ screen("fortress");
+ ft=newFT();
+ if(mode==="online")setupFortOnline();
+ renderFT();
+}
+
+function drawFT(projectile=null){
+ ctx.clearRect(0,0,can.width,can.height);
+ const sky=ctx.createLinearGradient(0,0,0,430);
+ sky.addColorStop(0,"#66c7ff");sky.addColorStop(.7,"#d7f0ff");
+ ctx.fillStyle=sky;ctx.fillRect(0,0,860,430);
+
+ ctx.beginPath();ctx.moveTo(0,terrainY(0));
+ for(let x=0;x<=860;x+=4)ctx.lineTo(x,terrainY(x));
+ ctx.lineTo(860,430);ctx.lineTo(0,430);ctx.closePath();
+ ctx.fillStyle="#6f5439";ctx.fill();
+
+ ft.tanks.forEach((t,i)=>{
+   const y=terrainY(t.x)-13;
+   ctx.fillStyle=i===0?"#2563eb":"#dc2626";
+   ctx.fillRect(t.x-19,y-8,38,16);
+   ctx.beginPath();ctx.arc(t.x,y-11,10,0,Math.PI*2);ctx.fill();
+
+   // 왼쪽 탱크는 오른쪽, 오른쪽 탱크는 왼쪽만 바라봄
+   const elev=t.angle*Math.PI/180;
+   const dir=i===0?1:-1;
+   const endX=t.x+dir*Math.cos(elev)*31;
+   const endY=y-13-Math.sin(elev)*31;
+   ctx.strokeStyle="#111827";ctx.lineWidth=5;ctx.lineCap="round";
+   ctx.beginPath();ctx.moveTo(t.x,y-13);ctx.lineTo(endX,endY);ctx.stroke();
+
+   ctx.fillStyle="#fff";ctx.font="bold 13px system-ui";
+   ctx.fillText(`HP ${t.hp}`,t.x-20,y-31);
+ });
+
+ if(projectile){
+   ctx.beginPath();ctx.arc(projectile.x,projectile.y,5,0,Math.PI*2);
+   ctx.fillStyle="#111827";ctx.fill();
+ }
+}
+
+function myFTIndex(){return mode==="solo"?0:(ft.me??0)}
+
 function renderFT(){
- let me=mode==="solo"?0:ft.me??0;$("#fortStatus").textContent=ft.over?"한 판 종료":(ft.turn===me?"내 차례":"상대 차례");
- $("#fortPlayers").innerHTML=`<div class="player ${me===0?"me":""}"><b>${me===0?esc(nickname):(mode==="solo"?"나":"상대")}</b><div class="score">${ft.wins[0]}승 · HP ${ft.tanks[0].hp}</div></div><div class="player ${me===1?"me":""}"><b>${mode==="solo"?"PC":(me===1?esc(nickname):"상대")}</b><div class="score">${ft.wins[1]}승 · HP ${ft.tanks[1].hp}</div></div>`;
- let t=ft.tanks[me];$("#fortInfo").textContent=`각도 ${t.angle}° · 파워 ${t.power}`;
- let active=!ft.over&&!anim&&ft.turn===me;["moveLeft","moveRight","angleDown","angleUp","powerDown","powerUp","fireBtn"].forEach(id=>$("#"+id).disabled=!active);
+ const me=myFTIndex(), other=1-me, t=ft.tanks[me];
+ if(!ft.over)$("#fortStatus").textContent=ft.turn===me?"내 차례":"상대 차례";
+
+ $("#fortPlayers").innerHTML=
+ `<div class="player me"><b>${esc(nickname)}</b><div class="score">${ft.wins[me]}승 · HP ${ft.tanks[me].hp}</div></div>
+ <div class="player"><b>${mode==="solo"?"PC":"상대"}</b><div class="score">${ft.wins[other]}승 · HP ${ft.tanks[other].hp}</div></div>`;
+
+ $("#fortInfo").textContent=`위치 ${Math.round(t.x)} · 포신 각도 ${t.angle}° · 파워 ${t.power}`;
+ const active=!ft.over&&!anim&&ft.turn===me;
+ ["moveLeft","moveRight","angleDown","angleUp","powerDown","powerUp","fireBtn"].forEach(id=>$("#"+id).disabled=!active);
  drawFT();
 }
-function adjust(kind,d){let me=mode==="solo"?0:ft.me??0,t=ft.tanks[me];if(ft.turn!==me||ft.over)return;if(kind==="x")t.x=Math.max(35,Math.min(825,t.x+d));else t[kind]=Math.max(kind==="angle"?10:20,Math.min(kind==="angle"?170:90,t[kind]+d));syncFT()}
-$("#moveLeft").onclick=()=>adjust("x",-8);$("#moveRight").onclick=()=>adjust("x",8);$("#angleDown").onclick=()=>adjust("angle",-3);$("#angleUp").onclick=()=>adjust("angle",3);$("#powerDown").onclick=()=>adjust("power",-3);$("#powerUp").onclick=()=>adjust("power",3);$("#fireBtn").onclick=fireFT;
-function syncFT(){renderFT();if(mode==="online")roomRef.child("state").set(ft)}
-function fireFT(){
- let me=mode==="solo"?0:ft.me??0;if(ft.turn!==me||anim)return;anim=true;let t=ft.tanks[me],rad=t.angle*Math.PI/180,x=t.x,y=terrainY(x)-25,v=t.power*0.22,vx=Math.cos(rad)*v,vy=-Math.sin(rad)*v,step=0;
- function tick(){step++;x+=vx;y+=vy;vy+=.16;drawFT();ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.fillStyle="#111";ctx.fill();let target=ft.tanks[1-me],ty=terrainY(target.x)-15;if(Math.hypot(x-target.x,y-ty)<24){target.hp=Math.max(0,target.hp-35);return endShot()}if(x<0||x>860||y>terrainY(Math.max(0,Math.min(860,x)))||step>500)return endShot();requestAnimationFrame(tick)}
+
+function adjustFT(kind,delta){
+ const me=myFTIndex();
+ if(ft.over||anim||ft.turn!==me)return;
+ const t=ft.tanks[me];
+
+ if(kind==="x"){
+   const min=me===0?35:465, max=me===0?395:825;
+   t.x=Math.max(min,Math.min(max,t.x+delta));
+ }else if(kind==="angle"){
+   t.angle=Math.max(10,Math.min(80,t.angle+delta));
+ }else{
+   t.power=Math.max(20,Math.min(90,t.power+delta));
+ }
+ syncFT();
+}
+
+function bindHold(id,action){
+ const el=$("#"+id);
+ const stop=()=>{clearTimeout(holdDelay);clearInterval(holdTimer);holdDelay=null;holdTimer=null};
+ const start=e=>{
+   e.preventDefault();stop();action();
+   holdDelay=setTimeout(()=>{holdTimer=setInterval(action,150)},350);
+ };
+ el.addEventListener("pointerdown",start);
+ ["pointerup","pointercancel","pointerleave"].forEach(ev=>el.addEventListener(ev,stop));
+ el.addEventListener("contextmenu",e=>e.preventDefault());
+}
+
+bindHold("moveLeft",()=>adjustFT("x",-6));
+bindHold("moveRight",()=>adjustFT("x",6));
+bindHold("angleDown",()=>adjustFT("angle",-1));
+bindHold("angleUp",()=>adjustFT("angle",1));
+bindHold("powerDown",()=>adjustFT("power",-1));
+bindHold("powerUp",()=>adjustFT("power",1));
+$("#fireBtn").onclick=()=>fireFT();
+
+function syncFT(){
+ renderFT();
+ if(mode==="online")roomRef.child("state").set(ft);
+}
+
+function shotVector(shooter){
+ const t=ft.tanks[shooter];
+ const elev=t.angle*Math.PI/180;
+ const dir=shooter===0?1:-1;
+ const speed=t.power*.22;
+ return {x:t.x,y:terrainY(t.x)-27,vx:dir*Math.cos(elev)*speed,vy:-Math.sin(elev)*speed};
+}
+
+function fireFT(forceHit=false){
+ const shooter=ft.turn, me=myFTIndex();
+ if(ft.over||anim)return;
+ if(mode!=="solo"&&shooter!==me)return;
+ if(mode==="solo"&&shooter===0&&me!==0)return;
+
+ anim=true;
+ const p=shotVector(shooter);
+ const target=1-shooter;
+ let step=0;
+
+ function tick(){
+   step++;
+   p.x+=p.vx;p.y+=p.vy;p.vy+=.16;
+   drawFT(p);
+
+   const targetTank=ft.tanks[target];
+   const targetY=terrainY(targetTank.x)-18;
+   const hit=Math.hypot(p.x-targetTank.x,p.y-targetY)<25;
+
+   if(hit)return endShot(shooter,true);
+   if(p.x<0||p.x>860||p.y>terrainY(Math.max(0,Math.min(860,p.x)))||step>520){
+     return endShot(shooter,false);
+   }
+   requestAnimationFrame(tick);
+ }
  tick();
 }
-function endShot(){anim=false;let dead=ft.tanks.findIndex(t=>t.hp<=0);if(dead>=0){let win=1-dead;ft.wins[win]++;ft.over=true;$("#fortNext").classList.remove("hidden");if(ft.wins[win]>=3){let me=mode==="solo"?0:ft.me??0;if(win===me){stats.fortressWins++;saveStats();if(mode==="online")finishOnline("fortress",uid)}$("#fortStatus").textContent="경기 종료"}syncFT();return}ft.turn=1-ft.turn;syncFT();if(mode==="solo"&&ft.turn===1)setTimeout(pcFT,550)}
-function pcFT(){if(ft.over)return;let p=ft.tanks[1],target=ft.tanks[0],dx=target.x-p.x;let tries=5+Math.floor(Math.random()*6);p.angle=135+Math.floor(Math.random()*12-6);p.power=Math.max(30,Math.min(85,Math.abs(dx)/12+25+(Math.random()-.5)*tries*2));renderFT();setTimeout(fireFT,350)}
-$("#fortNext").onclick=()=>{let wins=ft.wins;ft=newFT();ft.wins=wins;if(mode==="online")ft.me=arguments;$("#fortNext").classList.add("hidden");syncFT()};
-async function setupFortOnline(){
- const ps=(await roomRef.child("players").once("value")).val()||{},ids=Object.keys(ps),me=ids.indexOf(uid);
- if(isHost){ft.me=0;await roomRef.child("state").set(ft)}else ft.me=me;
- const cb=s=>{let st=s.val();if(!st)return;st.me=me;ft=st;renderFT()};
- roomRef.child("state").on("value",cb);unsub=()=>roomRef.child("state").off("value",cb);
+
+function endShot(shooter,hit){
+ anim=false;
+ const target=1-shooter;
+ if(hit)ft.tanks[target].hp=Math.max(0,ft.tanks[target].hp-35);
+
+ const dead=ft.tanks.findIndex(t=>t.hp<=0);
+ if(dead>=0){
+   const winner=1-dead;
+   ft.wins[winner]++;
+   ft.over=true;
+   $("#fortNext").classList.remove("hidden");
+
+   if(ft.wins[winner]>=3){
+     const me=myFTIndex();
+     if(winner===me){
+       stats.fortressWins++;saveStats();
+       if(mode==="online")finishOnline("fortress",uid);
+     }
+     $("#fortStatus").textContent="최종 경기 종료 · 3승 달성";
+   }else{
+     $("#fortStatus").textContent=`${winner===myFTIndex()?"내":"상대"} 승리 · 다음 판`;
+   }
+   syncFT();
+   return;
+ }
+
+ ft.turn=target;
+ syncFT();
+ if(mode==="solo"&&ft.turn===1)setTimeout(pcFT,600);
 }
+
+function simulateImpact(shooter,angle,power){
+ const t=ft.tanks[shooter], dir=shooter===0?1:-1;
+ let x=t.x,y=terrainY(t.x)-27;
+ let vx=dir*Math.cos(angle*Math.PI/180)*(power*.22);
+ let vy=-Math.sin(angle*Math.PI/180)*(power*.22);
+ for(let i=0;i<520;i++){
+   x+=vx;y+=vy;vy+=.16;
+   if(x<0||x>860||y>terrainY(Math.max(0,Math.min(860,x))))return {x,y};
+ }
+ return {x,y};
+}
+
+function findAIAim(wantHit){
+ const target=ft.tanks[0];
+ let best={angle:45,power:55,error:99999};
+ for(let a=15;a<=78;a+=2){
+   for(let p=25;p<=90;p+=2){
+     const impact=simulateImpact(1,a,p);
+     const err=Math.abs(impact.x-target.x);
+     if(err<best.error)best={angle:a,power:p,error:err};
+   }
+ }
+ if(wantHit)return best;
+
+ // 명중 예정 전에는 일부러 좌우로 빗나가게 함
+ const miss=best.error<60
+   ? {...best,power:Math.max(25,Math.min(90,best.power+(Math.random()<.5?-10:10)))}
+   : best;
+ return miss;
+}
+
+function pcFT(){
+ if(ft.over||ft.turn!==1)return;
+ ft.ai=ft.ai||{shots:0,hitAt:5+Math.floor(Math.random()*6)};
+ ft.ai.shots++;
+ const wantHit=ft.ai.shots>=ft.ai.hitAt;
+ const aim=findAIAim(wantHit);
+ ft.tanks[1].angle=aim.angle;
+ ft.tanks[1].power=aim.power;
+
+ // 명중 후 다음 5~10회 계획 재설정
+ if(wantHit){
+   ft.ai.shots=0;
+   ft.ai.hitAt=5+Math.floor(Math.random()*6);
+ }
+ renderFT();
+ setTimeout(()=>fireFT(),400);
+}
+
+$("#fortNext").onclick=()=>{
+ const keepWins=[...ft.wins];
+ const keepMe=ft.me;
+ ft=newFT();
+ ft.wins=keepWins;
+ if(mode==="online")ft.me=keepMe;
+ $("#fortNext").classList.add("hidden");
+ syncFT();
+ if(mode==="solo"&&ft.turn===1)setTimeout(pcFT,500);
+};
+
+async function setupFortOnline(){
+ const ps=(await roomRef.child("players").once("value")).val()||{};
+ const ids=Object.keys(ps), me=ids.indexOf(uid);
+ if(isHost){
+   ft.me=0;
+   await roomRef.child("state").set(ft);
+ }else ft.me=me;
+
+ const stateRef=roomRef.child("state");
+ const cb=s=>{
+   const st=s.val();
+   if(!st)return;
+   st.me=me;
+   ft=st;
+   renderFT();
+ };
+ stateRef.on("value",cb);
+ unsub=()=>stateRef.off("value",cb);
+}
+
+can.addEventListener("dblclick",e=>e.preventDefault());
+document.addEventListener("gesturestart",e=>e.preventDefault());
 
 /* Hall */
 async function finishOnline(kind,winner){

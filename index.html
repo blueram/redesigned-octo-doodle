@@ -11,7 +11,7 @@
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     body{margin:0;background:linear-gradient(160deg,#0f172a,#111827 60%,#172554);color:var(--txt);font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;min-height:100vh}
     button,input,select{font:inherit}
-    button{border:0;border-radius:14px;padding:13px 16px;background:#334155;color:#fff;font-weight:800;cursor:pointer;touch-action:manipulation}
+    button{border:0;user-select:none;-webkit-user-select:none;border-radius:14px;padding:13px 16px;background:#334155;color:#fff;font-weight:800;cursor:pointer;touch-action:manipulation}
     button.primary{background:linear-gradient(135deg,#0284c7,#2563eb)}
     button.green{background:linear-gradient(135deg,#16a34a,#059669)}
     button.red{background:linear-gradient(135deg,#dc2626,#be123c)}
@@ -34,7 +34,7 @@
     .player.me{border-color:#38bdf8}.score{font-size:30px;font-weight:950}
     .ox-board{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;max-width:430px;margin:16px auto}
     .ox-cell{aspect-ratio:1;background:#0f172a;border:1px solid var(--line);font-size:48px;display:grid;place-items:center;border-radius:18px}
-    .qbox{text-align:center;padding:25px 12px;background:#0f172a;border-radius:18px;margin:14px 0}.chosung{font-size:54px;font-weight:950;letter-spacing:10px}
+    .rulebox{background:#0f172a;border:1px solid #334155;border-radius:15px;padding:12px 14px;margin:12px 0;line-height:1.6}.rulebox b{color:#7dd3fc}.qbox{text-align:center;padding:25px 12px;background:#0f172a;border-radius:18px;margin:14px 0}.chosung{font-size:54px;font-weight:950;letter-spacing:10px}
     .progress{height:10px;background:#0f172a;border-radius:99px;overflow:hidden}.progress>i{display:block;height:100%;background:#38bdf8;width:0}
     canvas{width:100%;max-width:860px;background:linear-gradient(#75c8ff 0 58%,#7c5b3c 58%);border-radius:18px;border:1px solid var(--line);touch-action:none}
     .tank-controls{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.tank-controls button{padding:12px 6px}
@@ -95,7 +95,8 @@
   <section id="chosung" class="screen">
     <div class="card">
       <div class="row"><span class="pill" id="choMode">혼자</span><span class="pill" id="choRound">1 / 10</span><span class="pill" id="choTime">0.0초</span></div>
-      <div class="qbox"><div class="muted">다음 단어는?</div><div class="chosung" id="choQ">ㄱㅁ</div><div id="choHint" class="muted"></div></div>
+      <div class="rulebox"><b>게임 방법</b><br>단어의 첫 자음만 표시됩니다. 초성을 보고 원래 단어를 입력하세요.<br><span class="muted">예: ㅅㅂ → 수박 · ㄱㅇㅈ → 강아지</span></div>
+      <div class="qbox"><div class="muted">초성을 보고 단어를 맞혀보세요</div><div class="chosung" id="choQ">ㄱㅁ</div><div id="choHint" class="muted"></div></div>
       <div class="row"><input id="choAnswer" autocomplete="off" placeholder="정답 입력"><button id="choSubmit" class="primary">정답</button></div>
       <div style="height:12px"></div><div class="progress"><i id="choProgress"></i></div>
       <div id="choScores" class="players" style="margin-top:12px"></div>
@@ -104,6 +105,7 @@
 
   <section id="ox" class="screen">
     <div class="card">
+      <div class="rulebox"><b>OX 이동게임 규칙</b><br>각자 말을 3개씩 놓습니다. 3개를 모두 놓은 뒤에는 자기 말 하나를 선택해 빈칸으로 이동합니다. 가로·세로·대각선으로 먼저 3개를 잇는 사람이 승리하며, 3승을 먼저 하면 최종 승리합니다.</div>
       <div id="oxStatus" style="text-align:center;font-weight:900">내 차례</div>
       <div id="oxPlayers" class="players"></div>
       <div id="oxBoard" class="ox-board"></div>
@@ -113,6 +115,7 @@
 
   <section id="fortress" class="screen">
     <div class="card">
+      <div class="rulebox"><b>포트리스 규칙</b><br>탱크를 좌우로 이동하고 포신 각도와 파워를 조절해 발사합니다. 버튼을 길게 누르면 한 단계씩 계속 조절됩니다. 상대 탱크를 먼저 파괴하고 3승을 달성하면 최종 승리합니다.</div>
       <div id="fortStatus" style="text-align:center;font-weight:900">포트리스</div>
       <div id="fortPlayers" class="players"></div>
       <canvas id="fortCanvas" width="860" height="430"></canvas>
