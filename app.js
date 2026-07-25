@@ -71,7 +71,7 @@ function startGame(m,v){mode=m;if(unsub){unsub();unsub=null} if(game==="chosung"
 const WORDS=["가방","가위","가족","간식","갈비","감자","강아지","거울","건물","게임","겨울","고기","고양이","공원","공책","과자","교실","구름","기차","김밥","나무","냉면","노래","눈물","다리","달력","도서관","도시","동물","라면","마음","마이크","만두","모자","무지개","문어","바나나","바다","바람","박물관","밥상","배추","버스","병원","보리","복숭아","비누","비행기","사과","사람","사진","산책","선물","수박","시장","신발","아기","아이스크림","안경","야구","약속","양말","여행","연필","영화","오렌지","우산","운동","원숭이","음악","의자","자동차","자전거","장갑","전화","지갑","지하철","창문","책상","초콜릿","치킨","친구","카메라","커피","컴퓨터","토마토","학교","햄버거","휴대폰","냉장고","세탁기","청소기","에어컨","로봇","텔레비전","선풍기","제습기","전자레인지","공기청정기","안마의자","노트북","키보드","마우스","인터넷","소파","침대","식탁","옷장","화장실","주방","거실","베란다","아파트","엘리베이터","계단","주차장","편의점","백화점","마트","식당","카페","빵집","미용실","은행","우체국","경찰서","소방서","놀이터","수영장","헬스장","축구장","야구장","공항","기차역","버스터미널","여권","비밀번호","생일","결혼식","졸업식","크리스마스","어린이날","추석","설날","봄","여름","가을","겨울","아침","점심","저녁","새벽","월요일","화요일","수요일","목요일","금요일","토요일","일요일"];
 const CHO=["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
 const toCho=w=>[...w].map(c=>{let n=c.charCodeAt(0)-44032;return n>=0&&n<11172?CHO[Math.floor(n/588)]:c}).join("");
-let choList=[],choIdx=0,choStart=0,choTimer=null,choScores={},choHintTimers=[];
+let choList=[],choIdx=0,choStart=0,choTimer=null,choScores={},choHintTimers=[],choOnlineRoundKey="",choAdvanceTimer=null,choAdvancing=false;
 
 const CHO_HINTS={
 "가방":["물건","외출할 때 들고 다니는 물건","가○"],
@@ -261,7 +261,7 @@ function startChoHints(word){
 }
 
 function startChosung(){
- screen("chosung");clearChoHintTimers();choIdx=0;choScores={};choStart=performance.now();$("#choMode").textContent=mode==="solo"?"혼자":"온라인 10점 선승";
+ screen("chosung");clearChoHintTimers();clearTimeout(choAdvanceTimer);choAdvanceTimer=null;choAdvancing=false;choOnlineRoundKey="";choIdx=0;choScores={};choStart=performance.now();$("#choMode").textContent=mode==="solo"?"혼자":"온라인 10점 선승";
  if(mode==="solo"){choList=[...WORDS].sort(()=>Math.random()-.5).slice(0,10);nextCho();choTimer=setInterval(()=>$("#choTime").textContent=((performance.now()-choStart)/1000).toFixed(1)+"초",100)}
  else setupChoOnline();
 }
@@ -279,17 +279,106 @@ function submitCho(){
  const a=$("#choAnswer").value.trim();if(!a)return;
  if(mode==="solo"){if(a===choList[choIdx]){choIdx++;nextCho()}else toast("다시 생각해 보세요.")}
  else if(roomRef)roomRef.child("state").transaction(st=>{
-  if(!st||st.answer!==a||st.roundWinner)return st;
-  st.roundWinner=uid;st.scores=st.scores||{};st.scores[uid]=(st.scores[uid]||0)+1;return st;
+  if(!st||st.type!=="chosung"||st.answer!==a||st.roundWinner)return;
+  st.roundWinner=uid;
+  st.scores=st.scores||{};
+  st.scores[uid]=(st.scores[uid]||0)+1;
+  return st;
  });
 }
 $("#choSubmit").onclick=submitCho;$("#choAnswer").onkeydown=e=>{if(e.key==="Enter")submitCho()};
 function finishChoSolo(){clearInterval(choTimer);clearChoHintTimers();let t=(performance.now()-choStart)/1000;$("#choProgress").style.width="100%";$("#choQ").textContent="완료!";$("#choHint").textContent=`10문제 ${t.toFixed(1)}초`;if(!stats.chosungBest||t<stats.chosungBest)stats.chosungBest=t;saveStats();toast("최고 기록을 확인하세요.")}
 async function setupChoOnline(){
  const stateRef=roomRef.child("state");
- if(isHost){let w=WORDS[Math.floor(Math.random()*WORDS.length)];await stateRef.set({type:"chosung",word:w,answer:w,round:1,scores:{},roundWinner:null})}
- const cb=s=>{let st=s.val();if(!st)return;$("#choQ").textContent=toCho(st.word);$("#choRound").textContent=`${st.round||1} 라운드`;startChoHints(st.word);choScores=st.scores||{};renderChoScores();if(st.roundWinner&&isHost){let winScore=Math.max(...Object.values(choScores),0);setTimeout(async()=>{if(winScore>=10){await finishOnline("chosung",st.roundWinner);return}let w=WORDS[Math.floor(Math.random()*WORDS.length)];await stateRef.set({type:"chosung",word:w,answer:w,round:(st.round||1)+1,scores:choScores,roundWinner:null})},900)}};
- stateRef.on("value",cb);unsub=()=>stateRef.off("value",cb);
+
+ if(isHost){
+   const current=(await stateRef.once("value")).val();
+   if(!current||current.type!=="chosung"){
+     const w=WORDS[Math.floor(Math.random()*WORDS.length)];
+     await stateRef.set({
+       type:"chosung",
+       word:w,
+       answer:w,
+       round:1,
+       scores:{},
+       roundWinner:null,
+       roundToken:Date.now()
+     });
+   }
+ }
+
+ const cb=s=>{
+   const st=s.val();
+   if(!st||st.type!=="chosung")return;
+
+   choScores=st.scores||{};
+   renderChoScores();
+
+   // 같은 문제에서 점수/정답 상태만 바뀐 경우 화면과 힌트 타이머를 다시 시작하지 않음
+   const roundKey=`${st.round||1}_${st.roundToken||st.word}`;
+   if(roundKey!==choOnlineRoundKey){
+     choOnlineRoundKey=roundKey;
+     clearChoHintTimers();
+     $("#choQ").textContent=toCho(st.word);
+     $("#choRound").textContent=`${st.round||1} 라운드`;
+     $("#choAnswer").value="";
+     startChoHints(st.word);
+     $("#choAnswer").focus();
+   }
+
+   // 방장만 다음 문제로 이동하며, 같은 라운드에서 한 번만 예약
+   if(st.roundWinner&&isHost&&!choAdvancing){
+     choAdvancing=true;
+     clearTimeout(choAdvanceTimer);
+
+     const winnerScore=Math.max(...Object.values(choScores),0);
+     choAdvanceTimer=setTimeout(async()=>{
+       try{
+         const latest=(await stateRef.once("value")).val();
+         if(!latest||latest.roundWinner!==st.roundWinner||latest.round!==st.round){
+           choAdvancing=false;
+           return;
+         }
+
+         if(winnerScore>=10){
+           await finishOnline("chosung",st.roundWinner);
+           await roomRef.update({status:"finished"});
+           $("#choQ").textContent="게임 종료";
+           $("#choHint").textContent="10점을 먼저 획득한 플레이어가 승리했습니다.";
+           clearChoHintTimers();
+           return;
+         }
+
+         let w=WORDS[Math.floor(Math.random()*WORDS.length)];
+         // 바로 전 문제와 같은 단어 반복 방지
+         while(w===st.word&&WORDS.length>1){
+           w=WORDS[Math.floor(Math.random()*WORDS.length)];
+         }
+
+         await stateRef.set({
+           type:"chosung",
+           word:w,
+           answer:w,
+           round:(st.round||1)+1,
+           scores:choScores,
+           roundWinner:null,
+           roundToken:Date.now()
+         });
+       }finally{
+         choAdvancing=false;
+       }
+     },900);
+   }
+ };
+
+ stateRef.on("value",cb);
+ unsub=()=>{
+   clearTimeout(choAdvanceTimer);
+   choAdvanceTimer=null;
+   choAdvancing=false;
+   clearChoHintTimers();
+   stateRef.off("value",cb);
+ };
 }
 function renderChoScores(){roomRef.child("players").once("value").then(s=>{$("#choScores").innerHTML=Object.entries(s.val()||{}).map(([id,p])=>`<div class="player ${id===uid?"me":""}"><b>${esc(p.nick)}</b><div class="score">${choScores[id]||0}</div></div>`).join("")})}
 
