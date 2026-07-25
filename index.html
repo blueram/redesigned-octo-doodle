@@ -3,119 +3,134 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <meta name="theme-color" content="#101827">
-  <title>MiniGame 3종 PC</title>
+  <meta name="theme-color" content="#111827">
+  <title>MiniGame V2</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="style.css">
+  <style>
+    :root{--bg:#0f172a;--card:#172033;--line:#334155;--txt:#f8fafc;--muted:#94a3b8;--pri:#38bdf8;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b}
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    body{margin:0;background:linear-gradient(160deg,#0f172a,#111827 60%,#172554);color:var(--txt);font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;min-height:100vh}
+    button,input,select{font:inherit}
+    button{border:0;border-radius:14px;padding:13px 16px;background:#334155;color:#fff;font-weight:800;cursor:pointer;touch-action:manipulation}
+    button.primary{background:linear-gradient(135deg,#0284c7,#2563eb)}
+    button.green{background:linear-gradient(135deg,#16a34a,#059669)}
+    button.red{background:linear-gradient(135deg,#dc2626,#be123c)}
+    button.yellow{background:linear-gradient(135deg,#d97706,#ea580c)}
+    button:disabled{opacity:.45}
+    input{width:100%;border:1px solid var(--line);background:#0f172a;color:#fff;border-radius:12px;padding:13px}
+    .wrap{max-width:920px;margin:auto;padding:16px}
+    .top{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:14px}
+    .logo{font-size:25px;font-weight:950}.logo span{color:var(--pri)}
+    .card{background:rgba(23,32,51,.94);border:1px solid rgba(148,163,184,.22);border-radius:22px;padding:18px;box-shadow:0 18px 45px rgba(0,0,0,.22);margin-bottom:14px}
+    .row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:120px}
+    .games{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .game-card{min-height:150px;display:flex;flex-direction:column;justify-content:space-between;text-align:left}
+    .game-card b{font-size:22px}.emoji{font-size:38px}
+    .muted{color:var(--muted);font-size:13px}.hidden{display:none!important}
+    .screen{display:none}.screen.active{display:block}
+    .roomcode{font-size:30px;font-weight:950;letter-spacing:5px;text-align:center;color:#7dd3fc}
+    .pill{display:inline-flex;padding:6px 10px;border-radius:999px;background:#0f172a;border:1px solid var(--line);font-size:12px}
+    .players{display:grid;grid-template-columns:1fr 1fr;gap:10px}.player{padding:14px;border-radius:15px;background:#0f172a;border:1px solid var(--line)}
+    .player.me{border-color:#38bdf8}.score{font-size:30px;font-weight:950}
+    .ox-board{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;max-width:430px;margin:16px auto}
+    .ox-cell{aspect-ratio:1;background:#0f172a;border:1px solid var(--line);font-size:48px;display:grid;place-items:center;border-radius:18px}
+    .qbox{text-align:center;padding:25px 12px;background:#0f172a;border-radius:18px;margin:14px 0}.chosung{font-size:54px;font-weight:950;letter-spacing:10px}
+    .progress{height:10px;background:#0f172a;border-radius:99px;overflow:hidden}.progress>i{display:block;height:100%;background:#38bdf8;width:0}
+    canvas{width:100%;max-width:860px;background:linear-gradient(#75c8ff 0 58%,#7c5b3c 58%);border-radius:18px;border:1px solid var(--line);touch-action:none}
+    .tank-controls{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.tank-controls button{padding:12px 6px}
+    .ranking{width:100%;border-collapse:collapse}.ranking td,.ranking th{padding:10px;border-bottom:1px solid var(--line);text-align:left}
+    .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#020617;color:#fff;padding:11px 16px;border-radius:999px;z-index:99;opacity:0;transition:.2s;pointer-events:none}.toast.show{opacity:1}
+    @media(max-width:650px){.games{grid-template-columns:1fr}.game-card{min-height:105px}.players{grid-template-columns:1fr}.chosung{font-size:46px}.wrap{padding:11px}.card{padding:15px}.tank-controls{grid-template-columns:repeat(2,1fr)}}
+  </style>
 </head>
 <body>
-  <header class="topbar">
-    <button id="homeBtn" class="icon-btn hidden" aria-label="홈으로">←</button>
-    <div>
-      <h1>MiniGame</h1>
-      <p id="subtitle">PC와 함께 즐기는 3가지 미니게임</p>
+<div class="wrap">
+  <div class="top">
+    <div class="logo">🎮 Mini<span>Game</span> V2</div>
+    <button id="homeBtn" class="hidden">🏠 홈</button>
+  </div>
+
+  <section id="home" class="screen active">
+    <div class="card">
+      <div class="row">
+        <div><div class="muted">내 닉네임</div><input id="nickname" maxlength="12"></div>
+        <div style="align-self:end"><button id="saveNick" class="primary">닉네임 저장</button></div>
+      </div>
+      <div class="muted" style="margin-top:8px">닉네임과 개인 기록은 이 기기에 저장됩니다.</div>
     </div>
-  </header>
+    <div class="games">
+      <button class="card game-card" data-game="chosung"><span class="emoji">🔤</span><b>초성게임</b><span class="muted">온라인 10점 · 혼자 10문제 타임어택</span></button>
+      <button class="card game-card" data-game="ox"><span class="emoji">⭕</span><b>OX 이동게임</b><span class="muted">온라인 1:1 · 혼자 PC · 3선승</span></button>
+      <button class="card game-card" data-game="fortress"><span class="emoji">💥</span><b>포트리스</b><span class="muted">온라인 1:1 · 혼자 PC · 3선승</span></button>
+    </div>
+    <div class="card">
+      <h3>🏆 내 기록</h3>
+      <div id="myStats" class="row"></div>
+    </div>
+    <div class="card">
+      <h3>🌟 명예의 전당</h3>
+      <table class="ranking"><tbody id="hall"></tbody></table>
+    </div>
+  </section>
 
-  <main>
-    <section id="homeScreen" class="screen active">
-      <div class="game-grid">
-        <button class="game-card" data-game="ox">
-          <span class="emoji">⭕</span>
-          <strong>OX 이동식 게임</strong>
-          <small>3개를 놓은 뒤 말을 이동하며 PC와 대결</small>
-        </button>
-        <button class="game-card" data-game="chosung">
-          <span class="emoji">🔤</span>
-          <strong>초성 퀴즈</strong>
-          <small>힌트를 보고 정답을 입력하는 10문제</small>
-        </button>
-        <button class="game-card featured" data-game="fortress">
-          <span class="emoji">💥</span>
-          <strong>포트리스 PC 대전</strong>
-          <small>탱크 이동·각도·파워 조절로 PC를 격파</small>
-        </button>
+  <section id="lobby" class="screen">
+    <div class="card">
+      <h2 id="lobbyTitle">게임 대기실</h2>
+      <div class="row">
+        <button id="createRoom" class="primary">방 만들기</button>
+        <button id="soloPlay" class="green">혼자 시작</button>
       </div>
-    </section>
+      <div style="height:12px"></div>
+      <div class="row"><input id="roomInput" maxlength="6" placeholder="방 코드 6자리"><button id="joinRoom">방 참가</button></div>
+    </div>
+    <div id="roomPanel" class="card hidden">
+      <div class="muted">방 코드</div><div id="roomCode" class="roomcode">------</div>
+      <div class="row"><button id="copyRoom">코드 복사</button><button id="shareRoom">초대 링크 공유</button></div>
+      <div style="height:12px"></div><div id="roomPlayers" class="players"></div>
+      <div style="height:12px"></div><button id="startOnline" class="primary" style="width:100%">온라인 게임 시작</button>
+      <div class="muted" style="margin-top:8px">방장만 시작할 수 있으며, 상대가 없으면 시작되지 않습니다.</div>
+    </div>
+  </section>
 
-    <section id="oxScreen" class="screen">
-      <div class="panel">
-        <div class="status-row">
-          <span id="oxStatus">내 차례입니다.</span>
-          <button id="oxReset">새 게임</button>
-        </div>
-        <div id="oxBoard" class="ox-board" aria-label="OX 게임판"></div>
-        <p class="help">내 말은 X입니다. 처음 3개를 놓은 뒤에는 내 말을 누르고 빈칸을 눌러 이동하세요.</p>
+  <section id="chosung" class="screen">
+    <div class="card">
+      <div class="row"><span class="pill" id="choMode">혼자</span><span class="pill" id="choRound">1 / 10</span><span class="pill" id="choTime">0.0초</span></div>
+      <div class="qbox"><div class="muted">다음 단어는?</div><div class="chosung" id="choQ">ㄱㅁ</div><div id="choHint" class="muted"></div></div>
+      <div class="row"><input id="choAnswer" autocomplete="off" placeholder="정답 입력"><button id="choSubmit" class="primary">정답</button></div>
+      <div style="height:12px"></div><div class="progress"><i id="choProgress"></i></div>
+      <div id="choScores" class="players" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <section id="ox" class="screen">
+    <div class="card">
+      <div id="oxStatus" style="text-align:center;font-weight:900">내 차례</div>
+      <div id="oxPlayers" class="players"></div>
+      <div id="oxBoard" class="ox-board"></div>
+      <button id="oxReset" class="primary hidden" style="width:100%">다음 판</button>
+    </div>
+  </section>
+
+  <section id="fortress" class="screen">
+    <div class="card">
+      <div id="fortStatus" style="text-align:center;font-weight:900">포트리스</div>
+      <div id="fortPlayers" class="players"></div>
+      <canvas id="fortCanvas" width="860" height="430"></canvas>
+      <div class="tank-controls">
+        <button id="moveLeft">◀ 이동</button><button id="moveRight">이동 ▶</button>
+        <button id="angleDown">각도 −</button><button id="angleUp">각도 +</button>
+        <button id="powerDown">파워 −</button><button id="powerUp">파워 +</button>
+        <button id="fireBtn" class="red" style="grid-column:span 2">🚀 발사</button>
       </div>
-    </section>
+      <div id="fortInfo" class="muted" style="text-align:center;margin-top:8px"></div>
+      <button id="fortNext" class="primary hidden" style="width:100%;margin-top:10px">다음 판</button>
+    </div>
+  </section>
+</div>
+<div id="toast" class="toast"></div>
 
-    <section id="chosungScreen" class="screen">
-      <div class="panel quiz-panel">
-        <div class="status-row">
-          <span id="quizProgress">1 / 10</span>
-          <strong id="quizScore">점수 0</strong>
-        </div>
-        <div class="quiz-box">
-          <p id="quizCategory" class="tag">카테고리</p>
-          <div id="quizInitial" class="initial">ㅊㅅ</div>
-          <p id="quizHint" class="hint">힌트</p>
-          <input id="quizAnswer" type="text" placeholder="정답 입력" autocomplete="off">
-          <div class="button-row">
-            <button id="quizSubmit" class="primary">정답 확인</button>
-            <button id="quizSkip">건너뛰기</button>
-          </div>
-          <p id="quizMessage" class="message"></p>
-        </div>
-        <button id="quizRestart" class="hidden">다시 시작</button>
-      </div>
-    </section>
-
-    <section id="fortressScreen" class="screen">
-      <div class="fortress-wrap">
-        <div class="fortress-head">
-          <div>
-            <strong id="fortressTurn">내 차례</strong>
-            <span id="fortressMessage">각도와 파워를 조절해 발사하세요.</span>
-          </div>
-          <button id="fortressReset">새 게임</button>
-        </div>
-
-        <div class="health-row">
-          <div class="health-box"><span>나</span><div class="health-track"><i id="playerHp"></i></div><b id="playerHpText">100</b></div>
-          <div class="health-box"><span>PC</span><div class="health-track"><i id="aiHp"></i></div><b id="aiHpText">100</b></div>
-        </div>
-
-        <canvas id="fortressCanvas" width="1000" height="520"></canvas>
-
-        <div class="control-panel">
-          <div class="control-group">
-            <label>탱크 이동</label>
-            <div class="button-row">
-              <button class="hold-btn" data-action="moveLeft">◀ 왼쪽</button>
-              <button class="hold-btn" data-action="moveRight">오른쪽 ▶</button>
-            </div>
-          </div>
-          <div class="control-group">
-            <label>각도 <b id="angleValue">45°</b></label>
-            <div class="button-row">
-              <button class="hold-btn" data-action="angleDown">−</button>
-              <button class="hold-btn" data-action="angleUp">＋</button>
-            </div>
-          </div>
-          <div class="control-group">
-            <label>파워 <b id="powerValue">60</b></label>
-            <div class="button-row">
-              <button class="hold-btn" data-action="powerDown">−</button>
-              <button class="hold-btn" data-action="powerUp">＋</button>
-            </div>
-          </div>
-          <button id="fireBtn" class="fire-btn">🔥 발사</button>
-        </div>
-        <p class="help">버튼을 한 번 누르면 1단계, 길게 누르면 계속 1단계씩 조절됩니다. 더블클릭 확대는 차단되어 있습니다.</p>
-      </div>
-    </section>
-  </main>
-
-  <script src="app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

@@ -1,8 +1,14 @@
 {
   "rules": {
     "rooms": {
-      "$roomId": {
+      "$room": {
         ".read": true,
+        ".write": true
+      }
+    },
+    "hall": {
+      ".read": true,
+      "$uid": {
         ".write": true
       }
     }

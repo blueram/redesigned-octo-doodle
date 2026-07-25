@@ -1,10 +1,10 @@
 {
-  "name": "MiniGame 3종 PC",
+  "name": "MiniGame V2",
   "short_name": "MiniGame",
-  "start_url": "./index.html",
+  "start_url": "./",
   "display": "standalone",
-  "background_color": "#0b1120",
-  "theme_color": "#101827",
+  "background_color": "#0f172a",
+  "theme_color": "#111827",
   "icons": [
     {
       "src": "icon-192.png",

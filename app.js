@@ -1,366 +1,177 @@
 (() => {
 "use strict";
-
-// 브라우저 확대 방지
-document.addEventListener("dblclick", e => e.preventDefault(), {passive:false});
-document.addEventListener("gesturestart", e => e.preventDefault(), {passive:false});
-let lastTouchEnd=0;
-document.addEventListener("touchend", e => {
-  const now=Date.now();
-  if(now-lastTouchEnd<=300) e.preventDefault();
-  lastTouchEnd=now;
-},{passive:false});
-
-const $=id=>document.getElementById(id);
-const screens={home:$("homeScreen"),ox:$("oxScreen"),chosung:$("chosungScreen"),fortress:$("fortressScreen")};
-const titles={home:"PC와 함께 즐기는 3가지 미니게임",ox:"OX 이동식 게임",chosung:"초성 퀴즈",fortress:"포트리스 PC 대전"};
-function showScreen(name){
-  Object.values(screens).forEach(s=>s.classList.remove("active"));
-  screens[name].classList.add("active");
-  $("homeBtn").classList.toggle("hidden",name==="home");
-  $("subtitle").textContent=titles[name];
-  if(name==="fortress") requestAnimationFrame(drawFortress);
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const DB_URL="https://minigame-c8651-default-rtdb.asia-southeast1.firebasedatabase.app";
+const firebaseConfig={databaseURL:DB_URL};
+let db=null;
+try{firebase.initializeApp(firebaseConfig);db=firebase.database();}catch(e){console.warn(e)}
+const uid=localStorage.mg_uid||(localStorage.mg_uid=crypto.randomUUID());
+const animals=["호랑이","토끼","여우","판다","수달","사자","돌고래","고양이","강아지","펭귄"];
+let nickname=localStorage.mg_nick||animals[Math.floor(Math.random()*animals.length)]+Math.floor(100+Math.random()*900);
+let stats=JSON.parse(localStorage.mg_stats||'{"chosungBest":null,"chosungWins":0,"oxWins":0,"fortressWins":0}');
+let game="", room="", isHost=false, roomRef=null, unsub=null, mode="solo";
+const toast=t=>{const x=$("#toast");x.textContent=t;x.classList.add("show");setTimeout(()=>x.classList.remove("show"),1800)};
+function saveStats(){localStorage.mg_stats=JSON.stringify(stats);renderStats()}
+function screen(id){$$(".screen").forEach(x=>x.classList.remove("active"));$("#"+id).classList.add("active");$("#homeBtn").classList.toggle("hidden",id==="home")}
+function renderStats(){
+ $("#myStats").innerHTML=`<div class="player"><div class="muted">초성 최고</div><div class="score">${stats.chosungBest?stats.chosungBest.toFixed(1)+"초":"-"}</div></div>
+ <div class="player"><div class="muted">초성 우승</div><div class="score">${stats.chosungWins}</div></div>
+ <div class="player"><div class="muted">OX 우승</div><div class="score">${stats.oxWins}</div></div>
+ <div class="player"><div class="muted">포트리스 우승</div><div class="score">${stats.fortressWins}</div></div>`;
 }
-document.querySelectorAll(".game-card").forEach(b=>b.addEventListener("click",()=>showScreen(b.dataset.game)));
-$("homeBtn").addEventListener("click",()=>showScreen("home"));
+async function hall(){
+ if(!db)return;
+ const snap=await db.ref("hall").once("value"), v=snap.val()||{};
+ const rows=[];
+ Object.entries(v).forEach(([id,r])=>rows.push(r));
+ rows.sort((a,b)=>(b.total||0)-(a.total||0));
+ $("#hall").innerHTML=rows.slice(0,10).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.nick||"익명")}</td><td>${r.total||0}승</td></tr>`).join("")||'<tr><td colspan="3" class="muted">아직 기록이 없습니다.</td></tr>';
+}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+$("#nickname").value=nickname; renderStats(); hall();
+$("#saveNick").onclick=()=>{nickname=$("#nickname").value.trim()||nickname;localStorage.mg_nick=nickname;toast("닉네임을 저장했습니다.")};
+$$("[data-game]").forEach(b=>b.onclick=()=>openLobby(b.dataset.game));
+$("#homeBtn").onclick=leave;
+function gameName(g){return g==="chosung"?"초성게임":g==="ox"?"OX 이동게임":"포트리스"}
+function openLobby(g){game=g;$("#lobbyTitle").textContent=gameName(g)+" 대기실";$("#roomPanel").classList.add("hidden");screen("lobby")}
+function leave(){
+ if(roomRef){roomRef.child("players/"+uid).remove();roomRef=null}
+ if(unsub)unsub(); room=""; game=""; screen("home");hall();
+}
+$("#soloPlay").onclick=()=>startGame("solo");
+$("#createRoom").onclick=async()=>{
+ if(!db)return toast("Firebase 연결에 실패했습니다.");
+ room=Math.random().toString(36).slice(2,8).toUpperCase();isHost=true;mode="online";
+ roomRef=db.ref("rooms/"+room);
+ await roomRef.set({game,status:"waiting",host:uid,created:Date.now(),players:{[uid]:{nick:nickname,score:0,online:true}}});
+ roomRef.child("players/"+uid).onDisconnect().remove();showRoom();watchRoom();
+};
+$("#joinRoom").onclick=async()=>{
+ if(!db)return toast("Firebase 연결에 실패했습니다.");
+ room=$("#roomInput").value.trim().toUpperCase();
+ if(room.length<4)return toast("방 코드를 확인해 주세요.");
+ roomRef=db.ref("rooms/"+room);const snap=await roomRef.once("value"),v=snap.val();
+ if(!v)return toast("방을 찾을 수 없습니다."); if(v.game!==game)return toast("다른 게임의 방입니다.");
+ if(Object.keys(v.players||{}).length>=2&&!v.players?.[uid])return toast("방이 가득 찼습니다.");
+ isHost=v.host===uid;mode="online";await roomRef.child("players/"+uid).set({nick:nickname,score:0,online:true});
+ roomRef.child("players/"+uid).onDisconnect().remove();showRoom();watchRoom();
+};
+function showRoom(){$("#roomPanel").classList.remove("hidden");$("#roomCode").textContent=room}
+function watchRoom(){
+ const cb=s=>{const v=s.val();if(!v)return;renderRoomPlayers(v.players||{});isHost=v.host===uid;$("#startOnline").disabled=!isHost||Object.keys(v.players||{}).length<2;if(v.status==="playing")startGame("online",v)};
+ roomRef.on("value",cb);unsub=()=>roomRef.off("value",cb);
+}
+function renderRoomPlayers(ps){$("#roomPlayers").innerHTML=Object.entries(ps).map(([id,p])=>`<div class="player ${id===uid?"me":""}"><b>${esc(p.nick)}</b><div class="muted">${id===uid?"나":"상대"}</div></div>`).join("")}
+$("#copyRoom").onclick=()=>navigator.clipboard?.writeText(room).then(()=>toast("방 코드를 복사했습니다."));
+$("#shareRoom").onclick=async()=>{const url=location.origin+location.pathname+"?game="+game+"&room="+room;try{await navigator.share({title:"MiniGame 초대",text:`${nickname}님의 ${gameName(game)} 방`,url})}catch{navigator.clipboard?.writeText(url);toast("초대 링크를 복사했습니다.")}};
+$("#startOnline").onclick=async()=>{if(!isHost)return;await roomRef.update({status:"playing",started:Date.now(),state:null})};
+function startGame(m,v){mode=m;if(unsub){unsub();unsub=null} if(game==="chosung")startChosung();else if(game==="ox")startOX();else startFortress()}
 
-// OX 이동식 게임
-const oxBoardEl=$("oxBoard");
-let oxBoard,oxTurn,oxSelected,oxOver;
+/* CHOSUNG */
+const WORDS=["가방","가위","가족","간식","갈비","감자","강아지","거울","건물","게임","겨울","고기","고양이","공원","공책","과자","교실","구름","기차","김밥","나무","냉면","노래","눈물","다리","달력","도서관","도시","동물","라면","마음","마이크","만두","모자","무지개","문어","바나나","바다","바람","박물관","밥상","배추","버스","병원","보리","복숭아","비누","비행기","사과","사람","사진","산책","선물","수박","시장","신발","아기","아이스크림","안경","야구","약속","양말","여행","연필","영화","오렌지","우산","운동","원숭이","음악","의자","자동차","자전거","장갑","전화","지갑","지하철","창문","책상","초콜릿","치킨","친구","카메라","커피","컴퓨터","토마토","학교","햄버거","휴대폰","냉장고","세탁기","청소기","에어컨","로봇","텔레비전","선풍기","제습기","전자레인지","공기청정기","안마의자","노트북","키보드","마우스","인터넷","소파","침대","식탁","옷장","화장실","주방","거실","베란다","아파트","엘리베이터","계단","주차장","편의점","백화점","마트","식당","카페","빵집","미용실","은행","우체국","경찰서","소방서","놀이터","수영장","헬스장","축구장","야구장","공항","기차역","버스터미널","여권","비밀번호","생일","결혼식","졸업식","크리스마스","어린이날","추석","설날","봄","여름","가을","겨울","아침","점심","저녁","새벽","월요일","화요일","수요일","목요일","금요일","토요일","일요일"];
+const CHO=["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+const toCho=w=>[...w].map(c=>{let n=c.charCodeAt(0)-44032;return n>=0&&n<11172?CHO[Math.floor(n/588)]:c}).join("");
+let choList=[],choIdx=0,choStart=0,choTimer=null,choScores={};
+function startChosung(){
+ screen("chosung");choIdx=0;choScores={};choStart=performance.now();$("#choMode").textContent=mode==="solo"?"혼자":"온라인 10점 선승";
+ if(mode==="solo"){choList=[...WORDS].sort(()=>Math.random()-.5).slice(0,10);nextCho();choTimer=setInterval(()=>$("#choTime").textContent=((performance.now()-choStart)/1000).toFixed(1)+"초",100)}
+ else setupChoOnline();
+}
+function nextCho(){if(choIdx>=choList.length)return finishChoSolo();let w=choList[choIdx];$("#choQ").textContent=toCho(w);$("#choHint").textContent=`${w.length}글자`;$("#choRound").textContent=`${choIdx+1} / ${choList.length}`;$("#choProgress").style.width=(choIdx/choList.length*100)+"%";$("#choAnswer").value="";$("#choAnswer").focus()}
+function submitCho(){
+ const a=$("#choAnswer").value.trim();if(!a)return;
+ if(mode==="solo"){if(a===choList[choIdx]){choIdx++;nextCho()}else toast("다시 생각해 보세요.")}
+ else if(roomRef)roomRef.child("state").transaction(st=>{
+  if(!st||st.answer!==a||st.roundWinner)return st;
+  st.roundWinner=uid;st.scores=st.scores||{};st.scores[uid]=(st.scores[uid]||0)+1;return st;
+ });
+}
+$("#choSubmit").onclick=submitCho;$("#choAnswer").onkeydown=e=>{if(e.key==="Enter")submitCho()};
+function finishChoSolo(){clearInterval(choTimer);let t=(performance.now()-choStart)/1000;$("#choProgress").style.width="100%";$("#choQ").textContent="완료!";$("#choHint").textContent=`10문제 ${t.toFixed(1)}초`;if(!stats.chosungBest||t<stats.chosungBest)stats.chosungBest=t;saveStats();toast("최고 기록을 확인하세요.")}
+async function setupChoOnline(){
+ const stateRef=roomRef.child("state");
+ if(isHost){let w=WORDS[Math.floor(Math.random()*WORDS.length)];await stateRef.set({type:"chosung",word:w,answer:w,round:1,scores:{},roundWinner:null})}
+ const cb=s=>{let st=s.val();if(!st)return;$("#choQ").textContent=toCho(st.word);$("#choHint").textContent=`${st.word.length}글자`;$("#choRound").textContent=`${st.round||1} 라운드`;choScores=st.scores||{};renderChoScores();if(st.roundWinner&&isHost){let winScore=Math.max(...Object.values(choScores),0);setTimeout(async()=>{if(winScore>=10){await finishOnline("chosung",st.roundWinner);return}let w=WORDS[Math.floor(Math.random()*WORDS.length)];await stateRef.set({type:"chosung",word:w,answer:w,round:(st.round||1)+1,scores:choScores,roundWinner:null})},900)}};
+ stateRef.on("value",cb);unsub=()=>stateRef.off("value",cb);
+}
+function renderChoScores(){roomRef.child("players").once("value").then(s=>{$("#choScores").innerHTML=Object.entries(s.val()||{}).map(([id,p])=>`<div class="player ${id===uid?"me":""}"><b>${esc(p.nick)}</b><div class="score">${choScores[id]||0}</div></div>`).join("")})}
+
+/* OX */
+let ox={board:Array(9).fill(""),turn:"X",me:"X",roundWins:{X:0,O:0},over:false},oxAI=false;
 const wins=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-function oxCount(mark){return oxBoard.filter(v=>v===mark).length}
-function oxWinner(){for(const w of wins) if(w.every(i=>oxBoard[i]&&oxBoard[i]===oxBoard[w[0]])) return oxBoard[w[0]];return null}
-function oxAdjacent(a,b){const ar=Math.floor(a/3),ac=a%3,br=Math.floor(b/3),bc=b%3;return Math.max(Math.abs(ar-br),Math.abs(ac-bc))===1}
-function oxReset(){
-  oxBoard=Array(9).fill("");oxTurn="X";oxSelected=null;oxOver=false;
-  $("oxStatus").textContent="내 차례입니다.";renderOx();
+function startOX(){
+ screen("ox");oxAI=mode==="solo";ox={board:Array(9).fill(""),turn:"X",me:"X",roundWins:{X:0,O:0},over:false};
+ buildOX();
+ if(mode==="online")setupOXOnline();else renderOX();
 }
-function renderOx(){
-  oxBoardEl.innerHTML="";
-  oxBoard.forEach((v,i)=>{
-    const b=document.createElement("button");
-    const movable = oxSelected!==null && !v;
-    b.className=`ox-cell ${v.toLowerCase()} ${oxSelected===i?"selected":""} ${movable?"movable":""}`;
-    b.textContent=v;b.addEventListener("click",()=>oxClick(i));oxBoardEl.appendChild(b);
-  });
+function buildOX(){$("#oxBoard").innerHTML="";for(let i=0;i<9;i++){let b=document.createElement("button");b.className="ox-cell";b.onclick=()=>oxMove(i);$("#oxBoard").appendChild(b)}}
+function oxMove(i){
+ if(ox.over||ox.board[i]||ox.turn!==ox.me)return;
+ ox.board[i]=ox.me;afterOXMove();
+ if(mode==="online")roomRef.child("state").set(ox);
+ else if(!ox.over){ox.turn="O";renderOX();setTimeout(oxAIMove,400)}
 }
-function oxClick(i){
-  if(oxOver||oxTurn!=="X") return;
-  if(oxCount("X")<3){
-    if(oxBoard[i]) return;
-    oxBoard[i]="X";
-    return oxAfterMove();
-  }
-  if(oxSelected===null){
-    if(oxBoard[i]==="X"){
-      oxSelected=i;
-      $("oxStatus").textContent="이동할 빈칸을 선택하세요.";
-      renderOx();
-    }
-    return;
-  }
+function oxAIMove(){let empty=ox.board.map((v,i)=>v?"":i).filter(v=>v!=="");if(!empty.length)return;let i=bestOX("O")??bestOX("X")??empty[Math.floor(Math.random()*empty.length)];ox.board[i]="O";afterOXMove();if(!ox.over)ox.turn="X";renderOX()}
+function bestOX(mark){for(let line of wins){let vals=line.map(i=>ox.board[i]);if(vals.filter(v=>v===mark).length===2&&vals.includes(""))return line[vals.indexOf("")]}return null}
+function oxWinner(){for(let l of wins)if(ox.board[l[0]]&&ox.board[l[0]]===ox.board[l[1]]&&ox.board[l[1]]===ox.board[l[2]])return ox.board[l[0]];return ox.board.every(Boolean)?"D":null}
+function afterOXMove(){let w=oxWinner();if(w){ox.over=true;if(w!=="D")ox.roundWins[w]=(ox.roundWins[w]||0)+1;renderOX();if(ox.roundWins[w]>=3){if((mode==="solo"&&w==="X")||(mode==="online"&&w===ox.me)){stats.oxWins++;saveStats();if(mode==="online")finishOnline("ox",uid)}$("#oxStatus").textContent=(w==="D"?"무승부":w+" 승리")+" · 경기 종료"}else $("#oxReset").classList.remove("hidden")}else ox.turn=ox.turn==="X"?"O":"X"}
+$("#oxReset").onclick=()=>{ox.board=Array(9).fill("");ox.turn="X";ox.over=false;$("#oxReset").classList.add("hidden");if(mode==="online")roomRef.child("state").set(ox);else renderOX()};
+function renderOX(){
+ $$("#oxBoard .ox-cell").forEach((b,i)=>b.textContent=ox.board[i]);
+ $("#oxStatus").textContent=ox.over?"한 판 종료":(ox.turn===ox.me?"내 차례":"상대 차례");
+ $("#oxPlayers").innerHTML=`<div class="player me"><b>${esc(nickname)} (X)</b><div class="score">${ox.roundWins.X||0}</div></div><div class="player"><b>${mode==="solo"?"PC":"상대"} (O)</b><div class="score">${ox.roundWins.O||0}</div></div>`;
+}
+async function setupOXOnline(){
+ const ps=(await roomRef.child("players").once("value")).val()||{},ids=Object.keys(ps);ox.me=ids[0]===uid?"X":"O";
+ if(isHost)await roomRef.child("state").set(ox);
+ const cb=s=>{let st=s.val();if(!st)return;let me=ox.me;ox=st;ox.me=me;renderOX()};
+ roomRef.child("state").on("value",cb);unsub=()=>roomRef.child("state").off("value",cb);
+}
 
-  // 다른 내 말을 누르면 선택 변경
-  if(oxBoard[i]==="X"){
-    oxSelected=i;
-    $("oxStatus").textContent="선택한 말을 이동할 빈칸을 누르세요.";
-    renderOx();
-    return;
-  }
+/* FORTRESS */
+const can=$("#fortCanvas"),ctx=can.getContext("2d");
+let ft,anim=false;
+function terrainY(x){return 315+35*Math.sin(x/105)+18*Math.sin(x/47)}
+function newFT(){return{tanks:[{x:100,hp:100,angle:45,power:55},{x:760,hp:100,angle:135,power:55}],turn:0,wins:[0,0],over:false}}
+function startFortress(){screen("fortress");ft=newFT();if(mode==="online")setupFortOnline();drawFT();renderFT()}
+function drawFT(){
+ ctx.clearRect(0,0,can.width,can.height);let g=ctx.createLinearGradient(0,0,0,430);g.addColorStop(0,"#66c7ff");g.addColorStop(.7,"#d7f0ff");ctx.fillStyle=g;ctx.fillRect(0,0,860,430);
+ ctx.beginPath();ctx.moveTo(0,terrainY(0));for(let x=0;x<=860;x+=4)ctx.lineTo(x,terrainY(x));ctx.lineTo(860,430);ctx.lineTo(0,430);ctx.closePath();ctx.fillStyle="#6f5439";ctx.fill();
+ ft.tanks.forEach((t,i)=>{let y=terrainY(t.x)-13;ctx.fillStyle=i===0?"#2563eb":"#dc2626";ctx.fillRect(t.x-18,y-8,36,16);ctx.beginPath();ctx.arc(t.x,y-10,10,0,Math.PI*2);ctx.fill();let rad=t.angle*Math.PI/180;ctx.strokeStyle="#111827";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(t.x,y-12);ctx.lineTo(t.x+Math.cos(rad)*28,y-12-Math.sin(rad)*28);ctx.stroke();ctx.fillStyle="#fff";ctx.fillText(`${t.hp}`,t.x-9,y-28)});
+}
+function renderFT(){
+ let me=mode==="solo"?0:ft.me??0;$("#fortStatus").textContent=ft.over?"한 판 종료":(ft.turn===me?"내 차례":"상대 차례");
+ $("#fortPlayers").innerHTML=`<div class="player ${me===0?"me":""}"><b>${me===0?esc(nickname):(mode==="solo"?"나":"상대")}</b><div class="score">${ft.wins[0]}승 · HP ${ft.tanks[0].hp}</div></div><div class="player ${me===1?"me":""}"><b>${mode==="solo"?"PC":(me===1?esc(nickname):"상대")}</b><div class="score">${ft.wins[1]}승 · HP ${ft.tanks[1].hp}</div></div>`;
+ let t=ft.tanks[me];$("#fortInfo").textContent=`각도 ${t.angle}° · 파워 ${t.power}`;
+ let active=!ft.over&&!anim&&ft.turn===me;["moveLeft","moveRight","angleDown","angleUp","powerDown","powerUp","fireBtn"].forEach(id=>$("#"+id).disabled=!active);
+ drawFT();
+}
+function adjust(kind,d){let me=mode==="solo"?0:ft.me??0,t=ft.tanks[me];if(ft.turn!==me||ft.over)return;if(kind==="x")t.x=Math.max(35,Math.min(825,t.x+d));else t[kind]=Math.max(kind==="angle"?10:20,Math.min(kind==="angle"?170:90,t[kind]+d));syncFT()}
+$("#moveLeft").onclick=()=>adjust("x",-8);$("#moveRight").onclick=()=>adjust("x",8);$("#angleDown").onclick=()=>adjust("angle",-3);$("#angleUp").onclick=()=>adjust("angle",3);$("#powerDown").onclick=()=>adjust("power",-3);$("#powerUp").onclick=()=>adjust("power",3);$("#fireBtn").onclick=fireFT;
+function syncFT(){renderFT();if(mode==="online")roomRef.child("state").set(ft)}
+function fireFT(){
+ let me=mode==="solo"?0:ft.me??0;if(ft.turn!==me||anim)return;anim=true;let t=ft.tanks[me],rad=t.angle*Math.PI/180,x=t.x,y=terrainY(x)-25,v=t.power*0.22,vx=Math.cos(rad)*v,vy=-Math.sin(rad)*v,step=0;
+ function tick(){step++;x+=vx;y+=vy;vy+=.16;drawFT();ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.fillStyle="#111";ctx.fill();let target=ft.tanks[1-me],ty=terrainY(target.x)-15;if(Math.hypot(x-target.x,y-ty)<24){target.hp=Math.max(0,target.hp-35);return endShot()}if(x<0||x>860||y>terrainY(Math.max(0,Math.min(860,x)))||step>500)return endShot();requestAnimationFrame(tick)}
+ tick();
+}
+function endShot(){anim=false;let dead=ft.tanks.findIndex(t=>t.hp<=0);if(dead>=0){let win=1-dead;ft.wins[win]++;ft.over=true;$("#fortNext").classList.remove("hidden");if(ft.wins[win]>=3){let me=mode==="solo"?0:ft.me??0;if(win===me){stats.fortressWins++;saveStats();if(mode==="online")finishOnline("fortress",uid)}$("#fortStatus").textContent="경기 종료"}syncFT();return}ft.turn=1-ft.turn;syncFT();if(mode==="solo"&&ft.turn===1)setTimeout(pcFT,550)}
+function pcFT(){if(ft.over)return;let p=ft.tanks[1],target=ft.tanks[0],dx=target.x-p.x;let tries=5+Math.floor(Math.random()*6);p.angle=135+Math.floor(Math.random()*12-6);p.power=Math.max(30,Math.min(85,Math.abs(dx)/12+25+(Math.random()-.5)*tries*2));renderFT();setTimeout(fireFT,350)}
+$("#fortNext").onclick=()=>{let wins=ft.wins;ft=newFT();ft.wins=wins;if(mode==="online")ft.me=arguments;$("#fortNext").classList.add("hidden");syncFT()};
+async function setupFortOnline(){
+ const ps=(await roomRef.child("players").once("value")).val()||{},ids=Object.keys(ps),me=ids.indexOf(uid);
+ if(isHost){ft.me=0;await roomRef.child("state").set(ft)}else ft.me=me;
+ const cb=s=>{let st=s.val();if(!st)return;st.me=me;ft=st;renderFT()};
+ roomRef.child("state").on("value",cb);unsub=()=>roomRef.child("state").off("value",cb);
+}
 
-  // 같은 말을 다시 누르면 선택 해제
-  if(i===oxSelected){
-    oxSelected=null;
-    $("oxStatus").textContent="이동할 내 말을 선택하세요.";
-    renderOx();
-    return;
-  }
-
-  // 내 말 3개를 모두 놓은 뒤에는 비어 있는 어느 칸으로든 이동 가능
-  if(!oxBoard[i]){
-    oxBoard[i]="X";
-    oxBoard[oxSelected]="";
-    oxSelected=null;
-    oxAfterMove();
-  }
+/* Hall */
+async function finishOnline(kind,winner){
+ if(winner!==uid)return;
+ if(kind==="chosung"){stats.chosungWins++;saveStats()}
+ let ref=db.ref("hall/"+uid);await ref.transaction(v=>({nick:nickname,total:(v?.total||0)+1,updated:Date.now()}));
+ toast("우승 기록이 저장되었습니다.");
 }
-function oxAfterMove(){
-  renderOx();
-  const w=oxWinner();
-  if(w){oxOver=true;$("oxStatus").textContent=w==="X"?"내가 이겼습니다!":"PC가 이겼습니다.";return}
-  oxTurn=oxTurn==="X"?"O":"X";
-  if(oxTurn==="O"){ $("oxStatus").textContent="PC가 생각 중...";setTimeout(oxAi,450)}
-  else $("oxStatus").textContent="내 차례입니다.";
-}
-function oxAi(){
-  if(oxOver)return;
-  const tryWin=(mark)=>{
-    for(let i=0;i<9;i++) if(!oxBoard[i]){
-      oxBoard[i]=mark;const win=oxWinner()===mark;oxBoard[i]="";if(win)return i;
-    } return -1;
-  };
-  if(oxCount("O")<3){
-    let i=tryWin("O");if(i<0)i=tryWin("X");
-    if(i<0){const pref=[4,0,2,6,8,1,3,5,7].filter(x=>!oxBoard[x]);i=pref[Math.floor(Math.random()*Math.min(3,pref.length))]}
-    oxBoard[i]="O";oxAfterMove();return;
-  }
-  const moves=[];
-  oxBoard.forEach((v,from)=>{
-    if(v!=="O")return;
-    oxBoard.forEach((empty,to)=>{if(!empty&&oxAdjacent(from,to))moves.push({from,to})});
-  });
-  let chosen=null;
-  for(const m of moves){oxBoard[m.from]="";oxBoard[m.to]="O";if(oxWinner()==="O")chosen=m;oxBoard[m.to]="";oxBoard[m.from]="O";if(chosen)break}
-  if(!chosen) chosen=moves[Math.floor(Math.random()*moves.length)];
-  if(!chosen){oxOver=true;$("oxStatus").textContent="이동할 수 없어 무승부입니다.";return}
-  oxBoard[chosen.from]="";oxBoard[chosen.to]="O";oxAfterMove();
-}
-$("oxReset").addEventListener("click",oxReset);oxReset();
-
-// 초성 퀴즈
-const quizData=[
- {c:"음식",i:"ㅂㅂ",h:"비 오는 날 생각나는 전 요리",a:"빈대떡"},
- {c:"동물",i:"ㄱㄹ",h:"목이 긴 초식동물",a:"기린"},
- {c:"과일",i:"ㅅㄱ",h:"빨갛거나 초록색인 과일",a:"사과"},
- {c:"나라",i:"ㄷㅎㅁㄱ",h:"우리가 살고 있는 나라",a:"대한민국"},
- {c:"가전",i:"ㄴㅈㄱ",h:"음식을 차갑게 보관",a:"냉장고"},
- {c:"직업",i:"ㅅㅂㄱ",h:"불을 끄고 사람을 구조",a:"소방관"},
- {c:"교통",i:"ㅈㅎㅊ",h:"전기로 달리는 철도 교통수단",a:"지하철"},
- {c:"스포츠",i:"ㅊㄱ",h:"발로 공을 차는 경기",a:"축구"},
- {c:"장소",i:"ㄷㅅㄱ",h:"책을 빌려 읽는 곳",a:"도서관"},
- {c:"음식",i:"ㄱㅂ",h:"김과 밥으로 돌돌 만 음식",a:"김밥"}
-];
-let quizOrder=[],quizIndex=0,quizScore=0,quizLocked=false;
-function quizStart(){
-  quizOrder=[...quizData].sort(()=>Math.random()-.5);quizIndex=0;quizScore=0;quizLocked=false;
-  $("quizRestart").classList.add("hidden");$("quizAnswer").classList.remove("hidden");$("quizSubmit").classList.remove("hidden");$("quizSkip").classList.remove("hidden");
-  renderQuiz();
-}
-function renderQuiz(){
-  if(quizIndex>=quizOrder.length){
-    $("quizProgress").textContent="완료";$("quizCategory").textContent="결과";$("quizInitial").textContent=`${quizScore}점`;
-    $("quizHint").textContent=quizScore>=80?"초성 달인입니다!":"한 번 더 도전해 보세요.";
-    $("quizAnswer").classList.add("hidden");$("quizSubmit").classList.add("hidden");$("quizSkip").classList.add("hidden");$("quizRestart").classList.remove("hidden");return;
-  }
-  const q=quizOrder[quizIndex];
-  $("quizProgress").textContent=`${quizIndex+1} / ${quizOrder.length}`;$("quizScore").textContent=`점수 ${quizScore}`;
-  $("quizCategory").textContent=q.c;$("quizInitial").textContent=q.i;$("quizHint").textContent=q.h;$("quizMessage").textContent="";
-  $("quizAnswer").value="";$("quizAnswer").focus();quizLocked=false;
-}
-function checkQuiz(skip=false){
-  if(quizLocked)return;quizLocked=true;const q=quizOrder[quizIndex];
-  const answer=$("quizAnswer").value.replace(/\s/g,"");
-  if(!skip&&answer===q.a){quizScore+=10;$("quizMessage").textContent="정답입니다! 🎉"}
-  else $("quizMessage").textContent=`정답은 '${q.a}'입니다.`;
-  $("quizScore").textContent=`점수 ${quizScore}`;
-  setTimeout(()=>{quizIndex++;renderQuiz()},900);
-}
-$("quizSubmit").addEventListener("click",()=>checkQuiz(false));$("quizSkip").addEventListener("click",()=>checkQuiz(true));
-$("quizAnswer").addEventListener("keydown",e=>{if(e.key==="Enter")checkQuiz(false)});$("quizRestart").addEventListener("click",quizStart);quizStart();
-
-// 포트리스
-const canvas=$("fortressCanvas"),ctx=canvas.getContext("2d");
-const W=canvas.width,H=canvas.height,gravity=210;
-let terrain=[],player,ai,projectile,fortressState,aiShotTarget,aiShotsUntilHit,aiShotsTaken,explosion;
-function groundY(x){const idx=Math.max(0,Math.min(W-1,Math.round(x)));return terrain[idx]??430}
-function makeTerrain(){
-  // 급경사가 적은 완만한 산 지형을 매 게임 조금씩 다르게 생성
-  const phase1=Math.random()*Math.PI*2;
-  const phase2=Math.random()*Math.PI*2;
-  terrain=Array.from({length:W},(_,x)=>{
-    const broad=24*Math.sin(x/185+phase1);
-    const middle=12*Math.sin(x/88+phase2);
-    const centerHill=-34*Math.exp(-Math.pow((x-500)/230,2));
-    return Math.max(330,Math.min(455,408+broad+middle+centerHill));
-  });
-
-  // 시작 지점 주변은 탱크가 안정적으로 놓이도록 부드럽게 평탄화
-  smoothStartArea(130,72);
-  smoothStartArea(870,72);
-}
-function smoothStartArea(center,radius){
-  const centerY=terrain[Math.round(center)];
-  for(let x=Math.max(0,Math.floor(center-radius));x<=Math.min(W-1,Math.ceil(center+radius));x++){
-    const d=Math.abs(x-center)/radius;
-    const blend=Math.pow(Math.max(0,1-d),2);
-    terrain[x]=terrain[x]*(1-blend)+centerY*blend;
-  }
-}
-function carveCrater(cx,radius=48,depth=34){
-  const from=Math.max(0,Math.floor(cx-radius));
-  const to=Math.min(W-1,Math.ceil(cx+radius));
-  for(let x=from;x<=to;x++){
-    const dx=(x-cx)/radius;
-    if(Math.abs(dx)>1)continue;
-    // 중앙이 깊고 가장자리로 갈수록 자연스럽게 얕아지는 포물형 분화구
-    const amount=depth*(1-dx*dx);
-    terrain[x]=Math.min(H-18,terrain[x]+amount);
-  }
-}
-function settleTank(t){
-  t.y=groundY(t.x)-16;
-}
-function settleAllTanks(){
-  settleTank(player);
-  settleTank(ai);
-}
-function findStableTankX(currentX,minX,maxX,distance){
-  const direction=Math.random()<.5?-1:1;
-  const first=Math.max(minX,Math.min(maxX,currentX+direction*distance));
-  const candidates=[];
-  for(let offset=0;offset<=55;offset+=5){
-    candidates.push(first-offset,first+offset);
-  }
-  for(const x of candidates){
-    if(x<minX||x>maxX)continue;
-    const left=groundY(x-22),right=groundY(x+22);
-    if(Math.abs(left-right)<=22)return x;
-  }
-  return first;
-}
-function moveAiRandomlyAfterHit(){
-  const distance=45+Math.floor(Math.random()*116); // 45~160px 랜덤 이동
-  ai.x=findStableTankX(ai.x,545,965,distance);
-  settleTank(ai);
-  return distance;
-}
-function tankAt(x,side){
-  return {x,y:groundY(x)-16,side,hp:100,angle:side==="player"?45:135,power:60};
-}
-function fortressReset(){
-  makeTerrain();player=tankAt(130,"player");ai=tankAt(870,"ai");projectile=null;explosion=null;
-  fortressState="player";aiShotsTaken=0;aiShotsUntilHit=5+Math.floor(Math.random()*6); // 5~10회
-  updateFortressUi();$("fortressMessage").textContent=`PC는 ${aiShotsUntilHit}발 이내에 조준을 완성합니다.`;drawFortress();
-}
-function updateFortressUi(){
-  $("angleValue").textContent=`${Math.round(player.angle)}°`;$("powerValue").textContent=Math.round(player.power);
-  $("playerHp").style.width=`${player.hp}%`;$("aiHp").style.width=`${ai.hp}%`;
-  $("playerHpText").textContent=player.hp;$("aiHpText").textContent=ai.hp;
-  $("fortressTurn").textContent=fortressState==="player"?"내 차례":fortressState==="ai"?"PC 차례":"게임 종료";
-  const disabled=fortressState!=="player"||!!projectile;
-  document.querySelectorAll(".hold-btn").forEach(b=>b.disabled=disabled);$("fireBtn").disabled=disabled;
-}
-function modify(action){
-  if(fortressState!=="player"||projectile)return;
-  if(action==="moveLeft") player.x=Math.max(35,player.x-5);
-  if(action==="moveRight") player.x=Math.min(455,player.x+5);
-  player.y=groundY(player.x)-16;
-  if(action==="angleDown") player.angle=Math.max(10,player.angle-1);
-  if(action==="angleUp") player.angle=Math.min(80,player.angle+1);
-  if(action==="powerDown") player.power=Math.max(20,player.power-1);
-  if(action==="powerUp") player.power=Math.min(100,player.power+1);
-  updateFortressUi();drawFortress();
-}
-document.querySelectorAll(".hold-btn").forEach(btn=>{
-  let timer=null,started=false;
-  const start=e=>{e.preventDefault();if(started)return;started=true;modify(btn.dataset.action);timer=setInterval(()=>modify(btn.dataset.action),115)};
-  const stop=()=>{started=false;if(timer){clearInterval(timer);timer=null}};
-  btn.addEventListener("pointerdown",start);btn.addEventListener("pointerup",stop);btn.addEventListener("pointercancel",stop);btn.addEventListener("pointerleave",stop);
-});
-function barrelEnd(t){
-  const rad=t.angle*Math.PI/180,len=34;
-  return {x:t.x+Math.cos(rad)*len,y:t.y-Math.sin(rad)*len};
-}
-function launch(t,angle=t.angle,power=t.power){
-  const p=barrelEnd({...t,angle});const rad=angle*Math.PI/180;const speed=power*6;
-  projectile={x:p.x,y:p.y,vx:Math.cos(rad)*speed,vy:-Math.sin(rad)*speed,owner:t.side,last:performance.now()};
-  requestAnimationFrame(stepProjectile);
-}
-$("fireBtn").addEventListener("click",()=>{
-  if(fortressState!=="player"||projectile)return;
-  $("fortressMessage").textContent="포탄 발사!";launch(player);
-});
-function stepProjectile(now){
-  if(!projectile)return;
-  const dt=Math.min(.035,(now-projectile.last)/1000);projectile.last=now;
-  projectile.vy+=gravity*dt;projectile.x+=projectile.vx*dt;projectile.y+=projectile.vy*dt;
-  if(projectile.x<0||projectile.x>W||projectile.y>H){finishShot(null);return}
-  if(projectile.y>=groundY(projectile.x)){finishShot({x:projectile.x,y:groundY(projectile.x)});return}
-  drawFortress();requestAnimationFrame(stepProjectile);
-}
-function finishShot(hit){
-  const owner=projectile.owner;projectile=null;
-  let aiWasHit=false;
-  if(hit){
-    explosion={x:hit.x,y:hit.y,r:1};
-
-    // 포탄이 떨어진 지형을 파낸 뒤 탱크를 변경된 지면에 안착
-    carveCrater(hit.x,48,34);
-    settleAllTanks();
-
-    const target=owner==="player"?ai:player;
-    const d=Math.abs(hit.x-target.x);
-    if(d<58){
-      const damage=d<22?40:25;
-      target.hp=Math.max(0,target.hp-damage);
-      aiWasHit=owner==="player";
-      $("fortressMessage").textContent=`명중! ${damage} 피해`;
-    }else{
-      $("fortressMessage").textContent=d<110?"아깝습니다! 근처에 떨어졌습니다.":"빗나갔습니다.";
-    }
-
-    // 내 포탄에 PC 탱크가 맞으면 좌우·거리를 랜덤으로 이동
-    if(aiWasHit&&ai.hp>0){
-      const moved=moveAiRandomlyAfterHit();
-      $("fortressMessage").textContent+=` · PC 탱크가 약 ${moved}px 이동`;
-    }
-    animateExplosion();
-  }
-  updateFortressUi();
-  if(player.hp<=0||ai.hp<=0){
-    fortressState="over";
-    $("fortressMessage").textContent=ai.hp<=0?"승리했습니다! 🏆":"PC가 승리했습니다.";
-    updateFortressUi();drawFortress();return;
-  }
-  if(owner==="player"){
-    fortressState="ai";updateFortressUi();setTimeout(aiTurn,800);
-  }else{
-    fortressState="player";updateFortressUi();
-  }
-}
-function animateExplosion(){
-  if(!explosion)return;explosion.r+=5;drawFortress();
-  if(explosion.r<45)requestAnimationFrame(animateExplosion);else{explosion=null;drawFortress()}
-}
-function ballisticAngleForDistance(distance,power,high=false){
-  const v=power*6;const s=Math.min(.98,gravity*distance/(v*v));
-  if(s<=0||s>1)return 45;
-  let rad=.5*Math.asin(s);if(high)rad=Math.PI/2-rad;
-  return rad*180/Math.PI;
-}
-function aiTurn(){
-  if(fortressState!=="ai")return;
-  aiShotsTaken++;
-  settleTank(ai);
-  const distance=ai.x-player.x;
-  const forceHit=aiShotsTaken>=aiShotsUntilHit;
-  const basePower=62;
-  let angle=180-ballisticAngleForDistance(distance,basePower,false);
-  // 발사 횟수가 늘수록 오차가 줄고, 지정된 5~10번째 발에는 거의 정확히 명중
-  const remaining=Math.max(0,aiShotsUntilHit-aiShotsTaken);
-  const error=forceHit?0:(Math.random()*2-1)*(3+remaining*1.6);
-  ai.angle=Math.max(100,Math.min(170,angle+error));
-  ai.power=basePower+(forceHit?0:(Math.random()*2-1)*(2+remaining*.7));
-  $("fortressMessage").textContent=`PC 발사 ${aiShotsTaken}회째`;drawFortress();setTimeout(()=>launch(ai,ai.angle,ai.power),500);
-}
-function drawTank(t,color){
-  ctx.save();ctx.translate(t.x,t.y);
-  ctx.fillStyle="#111827";ctx.fillRect(-25,6,50,12);
-  ctx.fillStyle=color;ctx.fillRect(-20,-8,40,18);ctx.beginPath();ctx.arc(0,-10,13,Math.PI,0);ctx.fill();
-  const rad=t.angle*Math.PI/180;ctx.strokeStyle=color;ctx.lineWidth=8;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(0,-8);ctx.lineTo(Math.cos(rad)*34,-Math.sin(rad)*34-8);ctx.stroke();
-  ctx.fillStyle="#020617";[-17,0,17].forEach(x=>{ctx.beginPath();ctx.arc(x,16,7,0,Math.PI*2);ctx.fill()});ctx.restore();
-}
-function drawFortress(){
-  ctx.clearRect(0,0,W,H);
-  const sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,"#60a5fa");sky.addColorStop(1,"#dbeafe");ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
-  ctx.fillStyle="#ffffffaa";[[150,80,50],[420,120,65],[760,70,55]].forEach(([x,y,r])=>{ctx.beginPath();ctx.arc(x,y,r*.45,0,7);ctx.arc(x+r*.45,y-8,r*.55,0,7);ctx.arc(x+r,y,r*.4,0,7);ctx.fill()});
-  ctx.beginPath();ctx.moveTo(0,H);ctx.lineTo(0,terrain[0]);terrain.forEach((y,x)=>ctx.lineTo(x,y));ctx.lineTo(W,H);ctx.closePath();
-  const grd=ctx.createLinearGradient(0,350,0,H);grd.addColorStop(0,"#65a30d");grd.addColorStop(1,"#365314");ctx.fillStyle=grd;ctx.fill();
-  drawTank(player,"#2563eb");drawTank(ai,"#dc2626");
-  if(projectile){ctx.fillStyle="#111";ctx.beginPath();ctx.arc(projectile.x,projectile.y,7,0,Math.PI*2);ctx.fill()}
-  if(explosion){const g=ctx.createRadialGradient(explosion.x,explosion.y,2,explosion.x,explosion.y,explosion.r);g.addColorStop(0,"#fff");g.addColorStop(.25,"#fde047");g.addColorStop(.7,"#f97316");g.addColorStop(1,"#ef444400");ctx.fillStyle=g;ctx.beginPath();ctx.arc(explosion.x,explosion.y,explosion.r,0,Math.PI*2);ctx.fill()}
-}
-$("fortressReset").addEventListener("click",fortressReset);fortressReset();
-
-if("serviceWorker" in navigator) window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+const qp=new URLSearchParams(location.search),qg=qp.get("game"),qr=qp.get("room");
+if(qg&&qr){game=qg;openLobby(game);$("#roomInput").value=qr;setTimeout(()=>$("#joinRoom").click(),300)}
+if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
 })();
