@@ -415,12 +415,12 @@ function renderChoScores(){
 }
 
 /* OX - 각자 3개 배치 후 자기 말을 빈칸으로 이동 */
-let ox={board:Array(9).fill(""),turn:"X",me:"X",roundWins:{X:0,O:0},over:false},oxSelected=null;
+let ox={type:"ox",board:Array(9).fill(""),turn:"X",me:"X",roundWins:{X:0,O:0},over:false},oxSelected=null,oxSubmitting=false;
 const wins=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
 
 function startOX(){
  screen("ox");
- ox={board:Array(9).fill(""),turn:"X",me:"X",roundWins:{X:0,O:0},over:false};
+ ox={type:"ox",board:Array(9).fill(""),turn:"X",me:"X",roundWins:{X:0,O:0},over:false};
  oxSelected=null;
  buildOX();
  if(mode==="online")setupOXOnline(); else renderOX();
@@ -440,11 +440,16 @@ function oxCount(mark){return ox.board.filter(v=>v===mark).length}
 function oxPhase(mark){return oxCount(mark)<3?"place":"move"}
 
 function oxCellClick(i){
+ if(mode==="online"){
+   onlineOXCellClick(i);
+   return;
+ }
  if(ox.over||ox.turn!==ox.me)return;
  const mark=ox.me;
 
  if(oxPhase(mark)==="place"){
    if(ox.board[i])return toast("빈칸을 선택해 주세요.");
+   if(oxCount(mark)>=3)return toast("말은 3개까지만 놓을 수 있습니다.");
    ox.board[i]=mark;
    finishOXTurn();
    return;
@@ -457,24 +462,77 @@ function oxCellClick(i){
    return;
  }
 
- if(i===oxSelected){
-   oxSelected=null;
-   renderOX();
-   return;
- }
+ if(i===oxSelected){oxSelected=null;renderOX();return;}
+ if(ox.board[i]===mark){oxSelected=i;renderOX();return;}
+ if(ox.board[i])return toast("빈칸으로만 이동할 수 있습니다.");
 
- if(ox.board[i]===mark){
+ const from=oxSelected;
+ oxSelected=null;
+ ox.board[from]="";
+ ox.board[i]=mark;
+ finishOXTurn();
+}
+
+async function onlineOXCellClick(i){
+ if(!roomRef||oxSubmitting||ox.over||ox.turn!==ox.me)return;
+ const mark=ox.me;
+ const myCount=oxCount(mark);
+
+ // 이동 단계의 첫 클릭은 서버를 건드리지 않고 본인 말만 선택
+ if(myCount>=3&&oxSelected===null){
+   if(ox.board[i]!==mark)return toast("이동할 내 말을 먼저 선택해 주세요.");
    oxSelected=i;
    renderOX();
    return;
  }
+ if(myCount>=3&&i===oxSelected){oxSelected=null;renderOX();return;}
+ if(myCount>=3&&ox.board[i]===mark){oxSelected=i;renderOX();return;}
 
- if(ox.board[i])return toast("빈칸으로만 이동할 수 있습니다.");
+ const from=oxSelected;
+ oxSubmitting=true;
+ try{
+   const result=await roomRef.child("state").transaction(st=>{
+     if(!st||st.type!=="ox"||st.over||st.turn!==mark)return;
+     const board=Array.isArray(st.board)?st.board.slice(0,9):Array(9).fill("");
+     while(board.length<9)board.push("");
+     const count=board.filter(v=>v===mark).length;
 
- ox.board[i]=mark;
- ox.board[oxSelected]="";
- oxSelected=null;
- finishOXTurn();
+     if(count<3){
+       if(board[i])return;
+       board[i]=mark;
+     }else{
+       // 출발칸은 반드시 현재 서버에서도 내 말이어야 함
+       if(from===null||from===undefined||board[from]!==mark)return;
+       // 도착칸은 반드시 빈칸이어야 함. 상대 말은 절대 삭제하지 않음
+       if(board[i])return;
+       board[from]="";
+       board[i]=mark;
+     }
+
+     // 플레이어별 최대 3개 재검증
+     if(board.filter(v=>v===mark).length>3)return;
+     const other=mark==="X"?"O":"X";
+     if(board.filter(v=>v===other).length>3)return;
+
+     st.board=board;
+     st.roundWins=st.roundWins||{X:0,O:0};
+     let winner=null;
+     for(const l of wins){
+       if(board[l[0]]&&board[l[0]]===board[l[1]]&&board[l[1]]===board[l[2]]){winner=board[l[0]];break;}
+     }
+     if(winner){
+       st.over=true;
+       st.roundWins[winner]=(st.roundWins[winner]||0)+1;
+     }else{
+       st.turn=other;
+     }
+     return st;
+   });
+   if(result.committed)oxSelected=null;
+   else toast("현재 보드 상태가 변경되었습니다. 다시 선택해 주세요.");
+ }finally{
+   oxSubmitting=false;
+ }
 }
 
 function oxWinner(){
@@ -503,14 +561,12 @@ function finishOXTurn(){
      $("#oxStatus").textContent=`${winner} 승리 · 다음 판을 시작하세요`;
      $("#oxReset").classList.remove("hidden");
    }
-   if(mode==="online")roomRef.child("state").set(ox);
    return;
  }
 
  ox.turn=ox.turn==="X"?"O":"X";
  renderOX();
- if(mode==="online")roomRef.child("state").set(ox);
- else if(ox.turn==="O")setTimeout(oxAIMove,450);
+ if(mode!=="online"&&ox.turn==="O")setTimeout(oxAIMove,450);
 }
 
 function emptyOX(){return ox.board.map((v,i)=>v?null:i).filter(v=>v!==null)}
@@ -575,8 +631,12 @@ $("#oxReset").onclick=()=>{
  oxSelected=null;
  $("#oxReset").classList.add("hidden");
  renderOX();
- if(mode==="online")roomRef.child("state").set(ox);
- else if(ox.me==="O")setTimeout(oxAIMove,350);
+ if(mode==="online"){
+   roomRef.child("state").transaction(st=>{
+     if(!st||st.type!=="ox")return;
+     return {type:"ox",board:Array(9).fill(""),turn:"X",roundWins:st.roundWins||{X:0,O:0},over:false};
+   });
+ }else if(ox.me==="O")setTimeout(oxAIMove,350);
 };
 
 function renderOX(){
@@ -602,17 +662,32 @@ function renderOX(){
 async function setupOXOnline(){
  const ps=(await roomRef.child("players").once("value")).val()||{};
  const ids=Object.keys(ps);
- ox.me=ids[0]===uid?"X":"O";
- if(isHost)await roomRef.child("state").set(ox);
+ const myMark=ids[0]===uid?"X":"O";
+ ox.me=myMark;
 
  const stateRef=roomRef.child("state");
+ if(isHost){
+   const current=(await stateRef.once("value")).val();
+   if(!current||current.type!=="ox"){
+     await stateRef.set({type:"ox",board:Array(9).fill(""),turn:"X",roundWins:{X:0,O:0},over:false});
+   }
+ }
+
  const cb=s=>{
    const st=s.val();
-   if(!st)return;
-   const myMark=ox.me;
-   ox=st;
-   ox.me=myMark;
-   oxSelected=null;
+   if(!st||st.type!=="ox")return;
+   const board=Array.isArray(st.board)?st.board.slice(0,9):Array(9).fill("");
+   while(board.length<9)board.push("");
+   ox={
+     type:"ox",
+     board,
+     turn:st.turn==="O"?"O":"X",
+     roundWins:st.roundWins||{X:0,O:0},
+     over:!!st.over,
+     me:myMark
+   };
+   // 선택한 칸이 더 이상 내 말이 아니면 선택 해제
+   if(oxSelected!==null&&ox.board[oxSelected]!==myMark)oxSelected=null;
    renderOX();
  };
  stateRef.on("value",cb);
