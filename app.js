@@ -8,17 +8,25 @@ try{firebase.initializeApp(firebaseConfig);db=firebase.database();}catch(e){cons
 const uid=localStorage.mg_uid||(localStorage.mg_uid=crypto.randomUUID());
 const animals=["호랑이","토끼","여우","판다","수달","사자","돌고래","고양이","강아지","펭귄"];
 let nickname=localStorage.mg_nick||animals[Math.floor(Math.random()*animals.length)]+Math.floor(100+Math.random()*900);
-let stats=JSON.parse(localStorage.mg_stats||'{"chosungBest":null,"chosungWins":0,"oxWins":0,"fortressWins":0}');
+let stats=JSON.parse(localStorage.mg_stats||'{"chosungBest":null,"games":{"chosung":{"played":0,"wins":0,"losses":0,"draws":0},"ox":{"played":0,"wins":0,"losses":0,"draws":0},"fortress":{"played":0,"wins":0,"losses":0,"draws":0}}}');
+stats.games=stats.games||{chosung:{played:0,wins:stats.chosungWins||0,losses:0,draws:0},ox:{played:0,wins:stats.oxWins||0,losses:0,draws:0},fortress:{played:0,wins:stats.fortressWins||0,losses:0,draws:0}};
 let game="", room="", isHost=false, roomRef=null, unsub=null, mode="solo";
 const toast=t=>{const x=$("#toast");x.textContent=t;x.classList.add("show");setTimeout(()=>x.classList.remove("show"),1800)};
 function saveStats(){localStorage.mg_stats=JSON.stringify(stats);renderStats()}
 function screen(id){$$(".screen").forEach(x=>x.classList.remove("active"));$("#"+id).classList.add("active");$("#homeBtn").classList.toggle("hidden",id==="home")}
 function renderStats(){
- $("#myStats").innerHTML=`<div class="player"><div class="muted">초성 최고</div><div class="score">${stats.chosungBest?stats.chosungBest.toFixed(1)+"초":"-"}</div></div>
- <div class="player"><div class="muted">초성 우승</div><div class="score">${stats.chosungWins}</div></div>
- <div class="player"><div class="muted">OX 우승</div><div class="score">${stats.oxWins}</div></div>
- <div class="player"><div class="muted">포트리스 우승</div><div class="score">${stats.fortressWins}</div></div>`;
+ const card=(key,label)=>{const s=stats.games[key]||{played:0,wins:0,losses:0,draws:0};const rate=s.played?Math.round(s.wins/s.played*100):0;return `<div class="player"><div class="muted">${label}</div><div class="score">${s.wins}승</div><div class="muted">${s.played}전 · ${rate}%</div></div>`};
+ $("#myStats").innerHTML=`<div class="player"><div class="muted">초성 최고</div><div class="score">${stats.chosungBest?stats.chosungBest.toFixed(1)+"초":"-"}</div></div>${card("chosung","초성퀴즈")}${card("ox","OX")}${card("fortress","포트리스")}`;
 }
+async function recordGame(kind,result,duration=0){
+ const s=stats.games[kind]||(stats.games[kind]={played:0,wins:0,losses:0,draws:0});s.played++;if(result==="win")s.wins++;else if(result==="loss")s.losses++;else s.draws++;saveStats();
+ if(db)await db.ref(`playerStats/${uid}`).update({nickname,lastPlayed:Date.now(),[`games/${kind}`]:s,[`recent/${Date.now()}`]:{kind,result,duration}}).catch(()=>{});
+}
+function showResult(title,detail,retryText="다시하기",exitText="게임 종료"){$("#resultTitle").textContent=title;$("#resultDetail").innerHTML=detail;$("#resultRetry").textContent=retryText;$("#resultExit").textContent=exitText;$("#resultModal").classList.remove("hidden")}
+function hideResult(){$("#resultModal").classList.add("hidden")}
+async function requestRematch(kind){if(mode!=="online"){hideResult();return kind==="chosung"?startChosung():kind==="ox"?startOX():startFortress()}await roomRef.child("rematch/"+uid).set(true);$("#resultDetail").textContent="상대방의 재경기 선택을 기다리는 중..."}
+$("#resetStats").onclick=async()=>{if(!confirm("내 모든 전적을 삭제하시겠습니까? 복구할 수 없습니다."))return;stats={chosungBest:null,games:{chosung:{played:0,wins:0,losses:0,draws:0},ox:{played:0,wins:0,losses:0,draws:0},fortress:{played:0,wins:0,losses:0,draws:0}}};saveStats();if(db)await db.ref(`playerStats/${uid}`).remove().catch(()=>{});toast("내 전적을 초기화했습니다.")};
+
 async function hall(){
  if(!db)return;
  const snap=await db.ref("hall").once("value"), v=snap.val()||{};
@@ -34,7 +42,7 @@ $$("[data-game]").forEach(b=>b.onclick=()=>openLobby(b.dataset.game));
 $("#homeBtn").onclick=leave;
 function gameName(g){return g==="chosung"?"초성게임":g==="ox"?"OX 이동게임":"포트리스"}
 function openLobby(g){game=g;$("#lobbyTitle").textContent=gameName(g)+" 대기실";$("#roomPanel").classList.add("hidden");screen("lobby")}
-function leave(){
+function leave(){hideResult();
  if(roomRef){roomRef.child("players/"+uid).remove();roomRef=null}
  if(unsub)unsub(); room=""; game=""; screen("home");hall();
 }
@@ -307,7 +315,7 @@ function submitCho(){
  }
 }
 $("#choSubmit").onclick=submitCho;$("#choAnswer").onkeydown=e=>{if(e.key==="Enter")submitCho()};
-function finishChoSolo(){clearInterval(choTimer);clearChoHintTimers();let t=(performance.now()-choStart)/1000;$("#choProgress").style.width="100%";$("#choQ").textContent="완료!";$("#choHint").textContent=`10문제 ${t.toFixed(1)}초`;if(!stats.chosungBest||t<stats.chosungBest)stats.chosungBest=t;saveStats();toast("최고 기록을 확인하세요.")}
+function finishChoSolo(){clearInterval(choTimer);clearChoHintTimers();let t=(performance.now()-choStart)/1000;$("#choProgress").style.width="100%";$("#choQ").textContent="완료!";$("#choHint").textContent=`10문제 ${t.toFixed(1)}초`;if(!stats.chosungBest||t<stats.chosungBest)stats.chosungBest=t;recordGame("chosung","win",t);showResult("🎉 10문제 완료",`기록 <b>${t.toFixed(1)}초</b>`);$("#resultRetry").onclick=()=>{hideResult();startChosung()};$("#resultExit").onclick=()=>{hideResult();leave()}}
 async function setupChoOnline(){
  const stateRef=roomRef.child("state");
 
@@ -322,7 +330,8 @@ async function setupChoOnline(){
        round:1,
        scores:{},
        roundWinner:null,
-       roundToken:Date.now()
+       roundToken:Date.now(),
+       startedAt:Date.now()
      });
    }
  }
@@ -333,6 +342,8 @@ async function setupChoOnline(){
 
    choScores=st.scores||{};
    renderChoScores();
+   const top=Math.max(...Object.values(choScores),0);
+   if(top>=10){clearChoHintTimers();const winner=Object.keys(choScores).find(id=>choScores[id]===top);roomRef.child("players/"+winner).once("value").then(ps=>{const wn=ps.val()?.nick||"상대";const sec=((Date.now()-((st.startedAt)||Date.now()))/1000).toFixed(1);showResult("🏆 "+wn+" 우승",`경기 시간 <b>${sec}초</b>`,"다시하기","방에서 나가기");$("#resultRetry").onclick=()=>requestRematch("chosung");$("#resultExit").onclick=()=>{hideResult();leave()}});return;}
 
    // 같은 문제에서 점수/정답 상태만 바뀐 경우 화면과 힌트 타이머를 다시 시작하지 않음
    const roundKey=`${st.round||1}_${st.roundToken||st.word}`;
@@ -361,12 +372,7 @@ async function setupChoOnline(){
          }
 
          if(winnerScore>=10){
-           await finishOnline("chosung",st.roundWinner);
-           await roomRef.update({status:"finished"});
-           $("#choQ").textContent="게임 종료";
-           $("#choHint").textContent="10점을 먼저 획득한 플레이어가 승리했습니다.";
-           clearChoHintTimers();
-           return;
+           await finishOnline("chosung",st.roundWinner); await roomRef.update({status:"finished",finishedAt:Date.now(),winner:st.roundWinner}); return;
          }
 
          let w=WORDS[Math.floor(Math.random()*WORDS.length)];
@@ -391,8 +397,11 @@ async function setupChoOnline(){
    }
  };
 
+ const rematchRef=roomRef.child("rematch");
+ const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;const w=WORDS[Math.floor(Math.random()*WORDS.length)];await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null});await stateRef.set({type:"chosung",word:w,answer:w,round:1,scores:{},roundWinner:null,roundToken:Date.now(),startedAt:Date.now()});hideResult()};
+ rematchRef.on("value",rematchCb);
  stateRef.on("value",cb);
- unsub=()=>{
+ unsub=()=>{rematchRef.off("value",rematchCb);
    clearTimeout(choAdvanceTimer);
    choAdvanceTimer=null;
    choAdvancing=false;
@@ -612,7 +621,7 @@ function oxAIMove(){
    ox.board[i]="O";
  }else{
    let move=testMovement("O");
-   if(!move)move=testMovement("X");
+   if(!move){const choices=allOXMoves("O");move=choices[Math.floor(Math.random()*choices.length)]}
    if(!move){
      const choices=allOXMoves("O");
      move=choices[Math.floor(Math.random()*choices.length)];
@@ -690,15 +699,18 @@ async function setupOXOnline(){
    if(oxSelected!==null&&ox.board[oxSelected]!==myMark)oxSelected=null;
    renderOX();
  };
+ const rematchRef=roomRef.child("rematch");
+ const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null});await stateRef.set({type:"ox",board:Array(9).fill(""),turn:"X",roundWins:{X:0,O:0},over:false});hideResult()};
+ rematchRef.on("value",rematchCb);
  stateRef.on("value",cb);
- unsub=()=>stateRef.off("value",cb);
+ unsub=()=>{stateRef.off("value",cb);rematchRef.off("value",rematchCb)};
 }
 
 /* FORTRESS - 탱크 방향 고정, 좌우 이동, 각도/파워 별도 조절 */
 const can=$("#fortCanvas"),ctx=can.getContext("2d");
 let ft,anim=false,holdTimer=null,holdDelay=null;
-
-function terrainY(x){return 315+35*Math.sin(x/105)+18*Math.sin(x/47)}
+function baseTerrainY(x){return 315+35*Math.sin(x/105)+18*Math.sin(x/47)}
+function terrainY(x){let y=baseTerrainY(x);for(const c of (ft?.craters||[])){const d=Math.abs(x-c.x);if(d<c.r)y+=c.depth*(1-Math.pow(d/c.r,2));}return Math.min(410,y)}
 function newFT(){
  return{
    tanks:[
@@ -706,7 +718,7 @@ function newFT(){
      {x:760,hp:100,angle:45,power:55}
    ],
    turn:0,wins:[0,0],over:false,
-   ai:{shots:0,hitAt:5+Math.floor(Math.random()*6)}
+   ai:{shots:0,hitAt:5+Math.floor(Math.random()*6)},craters:[],trajectoryUsed:[false,false],showTrajectory:false
  };
 }
 
@@ -764,8 +776,9 @@ function renderFT(){
 
  $("#fortInfo").textContent=`위치 ${Math.round(t.x)} · 포신 각도 ${t.angle}° · 파워 ${t.power}`;
  const active=!ft.over&&!anim&&ft.turn===me;
- ["moveLeft","moveRight","angleDown","angleUp","powerDown","powerUp","fireBtn"].forEach(id=>$("#"+id).disabled=!active);
+ ["moveLeft","moveRight","angleDown","angleUp","powerDown","powerUp","fireBtn","trajectoryBtn"].forEach(id=>$("#"+id).disabled=!active);
  drawFT();
+ if(ft.showTrajectory&&!ft.trajectoryUsed[me])drawTrajectory(me);
 }
 
 function adjustFT(kind,delta){
@@ -809,6 +822,9 @@ function syncFT(){
  if(mode==="online")roomRef.child("state").set(ft);
 }
 
+
+function drawTrajectory(shooter){const p=shotVector(shooter);ctx.save();ctx.fillStyle="rgba(255,255,255,.75)";for(let i=0;i<180;i++){p.x+=p.vx;p.y+=p.vy;p.vy+=.16;if(i%8===0){ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill()}if(p.x<0||p.x>860||p.y>terrainY(Math.max(0,Math.min(860,p.x))))break}ctx.restore()}
+$("#trajectoryBtn").onclick=()=>{const me=myFTIndex();if(ft.trajectoryUsed[me])return toast("이번 경기의 궤적 아이템을 이미 사용했습니다.");ft.showTrajectory=!ft.showTrajectory;renderFT()};
 function shotVector(shooter){
  const t=ft.tanks[shooter];
  const elev=t.angle*Math.PI/180;
@@ -824,6 +840,7 @@ function fireFT(forceHit=false){
  if(mode==="solo"&&shooter===0&&me!==0)return;
 
  anim=true;
+ if(ft.showTrajectory){ft.trajectoryUsed[shooter]=true;ft.showTrajectory=false}
  const p=shotVector(shooter);
  const target=1-shooter;
  let step=0;
@@ -837,18 +854,19 @@ function fireFT(forceHit=false){
    const targetY=terrainY(targetTank.x)-18;
    const hit=Math.hypot(p.x-targetTank.x,p.y-targetY)<25;
 
-   if(hit)return endShot(shooter,true);
+   if(hit)return endShot(shooter,true,p.x);
    if(p.x<0||p.x>860||p.y>terrainY(Math.max(0,Math.min(860,p.x)))||step>520){
-     return endShot(shooter,false);
+     return endShot(shooter,false,p.x);
    }
    requestAnimationFrame(tick);
  }
  tick();
 }
 
-function endShot(shooter,hit){
+function endShot(shooter,hit,impactX){
  anim=false;
  const target=1-shooter;
+ if(Number.isFinite(impactX)&&impactX>=0&&impactX<=860)ft.craters.push({x:impactX,r:hit?34:26,depth:hit?18:14});
  if(hit)ft.tanks[target].hp=Math.max(0,ft.tanks[target].hp-35);
 
  const dead=ft.tanks.findIndex(t=>t.hp<=0);
@@ -861,10 +879,10 @@ function endShot(shooter,hit){
    if(ft.wins[winner]>=3){
      const me=myFTIndex();
      if(winner===me){
-       stats.fortressWins++;saveStats();
+       recordGame("fortress","win");
        if(mode==="online")finishOnline("fortress",uid);
      }
-     $("#fortStatus").textContent="최종 경기 종료 · 3승 달성";
+     $("#fortStatus").textContent="최종 경기 종료 · 3승 달성";const mine=winner===myFTIndex();if(!mine)recordGame("fortress","loss");showResult(mine?"🏆 포트리스 승리":"포트리스 패배",`${ft.wins[myFTIndex()]} : ${ft.wins[1-myFTIndex()]}`,"다시 대전하기",mode==="online"?"방에서 나가기":"게임 종료");$("#resultRetry").onclick=()=>requestRematch("fortress");$("#resultExit").onclick=()=>{hideResult();leave()};
    }else{
      $("#fortStatus").textContent=`${winner===myFTIndex()?"내":"상대"} 승리 · 다음 판`;
    }
@@ -874,9 +892,11 @@ function endShot(shooter,hit){
 
  ft.turn=target;
  syncFT();
- if(mode==="solo"&&ft.turn===1)setTimeout(pcFT,600);
+ if(mode==="solo"&&shooter===0&&hit){setTimeout(()=>animatePCMove(()=>pcFT()),350)}else if(mode==="solo"&&ft.turn===1)setTimeout(pcFT,600);
 }
 
+
+function animatePCMove(done){if(ft.over||ft.turn!==1)return done&&done();anim=true;const t=ft.tanks[1],stepSize=18,maxSteps=1+Math.floor(Math.random()*5);let dir=Math.random()<.5?-1:1;if(t.x>780)dir=-1;if(t.x<500)dir=1;let n=0;function frame(){if(n>=maxSteps){anim=false;syncFT();return done&&done()}const target=Math.max(465,Math.min(825,t.x+dir*stepSize));const start=t.x;let f=0;function roll(){f++;t.x=start+(target-start)*(f/8);drawFT();if(f<8)requestAnimationFrame(roll);else{n++;frame()}}roll()}frame()}
 function simulateImpact(shooter,angle,power){
  const t=ft.tanks[shooter], dir=shooter===0?1:-1;
  let x=t.x,y=terrainY(t.x)-27;
@@ -953,8 +973,11 @@ async function setupFortOnline(){
    ft=st;
    renderFT();
  };
+ const rematchRef=roomRef.child("rematch");
+ const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;const fresh=newFT();fresh.me=0;await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null});await stateRef.set(fresh);hideResult()};
+ rematchRef.on("value",rematchCb);
  stateRef.on("value",cb);
- unsub=()=>stateRef.off("value",cb);
+ unsub=()=>{stateRef.off("value",cb);rematchRef.off("value",rematchCb)};
 }
 
 can.addEventListener("dblclick",e=>e.preventDefault());
@@ -963,7 +986,7 @@ document.addEventListener("gesturestart",e=>e.preventDefault());
 /* Hall */
 async function finishOnline(kind,winner){
  if(winner!==uid)return;
- if(kind==="chosung"){stats.chosungWins++;saveStats()}
+ if(kind==="chosung")recordGame("chosung","win")
  let ref=db.ref("hall/"+uid);await ref.transaction(v=>({nick:nickname,total:(v?.total||0)+1,updated:Date.now()}));
  toast("우승 기록이 저장되었습니다.");
 }

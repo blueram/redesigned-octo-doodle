@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <meta name="theme-color" content="#111827">
-  <title>MiniGame V2</title>
+  <title>MiniGame V3</title>
   <link rel="manifest" href="manifest.webmanifest">
   <style>
     :root{--bg:#0f172a;--card:#172033;--line:#334155;--txt:#f8fafc;--muted:#94a3b8;--pri:#38bdf8;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b}
@@ -39,16 +39,16 @@
     canvas{width:100%;max-width:860px;background:linear-gradient(#75c8ff 0 58%,#7c5b3c 58%);border-radius:18px;border:1px solid var(--line);touch-action:none}
     .tank-controls{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.tank-controls button{padding:12px 6px}
     .ranking{width:100%;border-collapse:collapse}.ranking td,.ranking th{padding:10px;border-bottom:1px solid var(--line);text-align:left}
-    .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#020617;color:#fff;padding:11px 16px;border-radius:999px;z-index:99;opacity:0;transition:.2s;pointer-events:none}.toast.show{opacity:1}
+    .result-modal{position:fixed;inset:0;background:rgba(2,6,23,.78);display:grid;place-items:center;z-index:200;padding:18px}.result-box{width:min(430px,100%);background:#172033;border:1px solid #475569;border-radius:24px;padding:24px;text-align:center}.result-title{font-size:28px;font-weight:950}.result-detail{font-size:18px;line-height:1.7;margin:16px 0}.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#020617;color:#fff;padding:11px 16px;border-radius:999px;z-index:99;opacity:0;transition:.2s;pointer-events:none}.toast.show{opacity:1}
     @media(max-width:650px){.games{grid-template-columns:1fr}.game-card{min-height:105px}.players{grid-template-columns:1fr}.chosung{font-size:46px}.wrap{padding:11px}.card{padding:15px}.tank-controls{grid-template-columns:repeat(2,1fr)}}
   .version-badge{position:fixed;top:8px;right:10px;z-index:9999;background:#0f172a;color:#7dd3fc;border:1px solid #334155;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900;box-shadow:0 4px 14px rgba(0,0,0,.25);letter-spacing:.3px}
 </style>
 </head>
 <body>
-<div id="appVersion" class="version-badge">MiniGame V2.8</div>
+<div id="appVersion" class="version-badge">MiniGame V3.0</div>
 <div class="wrap">
   <div class="top">
-    <div class="logo">🎮 Mini<span>Game</span> V2</div>
+    <div class="logo">🎮 Mini<span>Game</span> V3</div>
     <button id="homeBtn" class="hidden">🏠 홈</button>
   </div>
 
@@ -67,7 +67,7 @@
     </div>
     <div class="card">
       <h3>🏆 내 기록</h3>
-      <div id="myStats" class="row"></div>
+      <div id="myStats" class="row"></div><button id="resetStats" class="red" style="width:100%;margin-top:12px">내 전적 초기화</button>
     </div>
     <div class="card">
       <h3>🌟 명예의 전당</h3>
@@ -125,14 +125,14 @@
         <button id="moveLeft">◀ 이동</button><button id="moveRight">이동 ▶</button>
         <button id="angleDown">각도 −</button><button id="angleUp">각도 +</button>
         <button id="powerDown">파워 −</button><button id="powerUp">파워 +</button>
-        <button id="fireBtn" class="red" style="grid-column:span 2">🚀 발사</button>
+        <button id="trajectoryBtn" class="yellow">✨ 궤적 아이템 1발</button><button id="fireBtn" class="red">🚀 발사</button>
       </div>
       <div id="fortInfo" class="muted" style="text-align:center;margin-top:8px"></div>
       <button id="fortNext" class="primary hidden" style="width:100%;margin-top:10px">다음 판</button>
     </div>
   </section>
 </div>
-<div id="toast" class="toast"></div>
+<div id="resultModal" class="result-modal hidden"><div class="result-box"><div id="resultTitle" class="result-title">게임 종료</div><div id="resultDetail" class="result-detail"></div><div class="row"><button id="resultRetry" class="primary">다시하기</button><button id="resultExit">게임 종료</button></div></div></div><div id="toast" class="toast"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
