@@ -21,6 +21,7 @@ main{max-width:1120px;margin:0 auto;padding:24px}
 .ox-board{width:min(520px,80vw);aspect-ratio:1;margin:28px auto;display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .ox-cell{font-size:clamp(44px,9vw,86px);background:#1e293b;border:2px solid #475569;display:grid;place-items:center}
 .ox-cell.selected{outline:5px solid #facc15;background:#3f3f20}
+.ox-cell.movable{box-shadow:inset 0 0 0 4px #22c55e;background:#163727}
 .ox-cell.x{color:#60a5fa}.ox-cell.o{color:#fb7185}
 .help{text-align:center;color:#94a3b8;font-size:13px;line-height:1.5}
 .quiz-panel{max-width:720px;margin:auto}.quiz-box{text-align:center;padding:24px}.tag{display:inline-block;background:#3730a3;padding:7px 12px;border-radius:99px}.initial{font-size:72px;font-weight:900;letter-spacing:14px;margin:30px 0}.hint{color:#cbd5e1}

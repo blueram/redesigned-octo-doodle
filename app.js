@@ -39,7 +39,8 @@ function renderOx(){
   oxBoardEl.innerHTML="";
   oxBoard.forEach((v,i)=>{
     const b=document.createElement("button");
-    b.className=`ox-cell ${v.toLowerCase()} ${oxSelected===i?"selected":""}`;
+    const movable = oxSelected!==null && !v;
+    b.className=`ox-cell ${v.toLowerCase()} ${oxSelected===i?"selected":""} ${movable?"movable":""}`;
     b.textContent=v;b.addEventListener("click",()=>oxClick(i));oxBoardEl.appendChild(b);
   });
 }
@@ -51,12 +52,36 @@ function oxClick(i){
     return oxAfterMove();
   }
   if(oxSelected===null){
-    if(oxBoard[i]==="X"){oxSelected=i;renderOx()}
+    if(oxBoard[i]==="X"){
+      oxSelected=i;
+      $("oxStatus").textContent="이동할 빈칸을 선택하세요.";
+      renderOx();
+    }
     return;
   }
-  if(i===oxSelected){oxSelected=null;renderOx();return}
-  if(!oxBoard[i]&&oxAdjacent(oxSelected,i)){
-    oxBoard[i]="X";oxBoard[oxSelected]="";oxSelected=null;oxAfterMove();
+
+  // 다른 내 말을 누르면 선택 변경
+  if(oxBoard[i]==="X"){
+    oxSelected=i;
+    $("oxStatus").textContent="선택한 말을 이동할 빈칸을 누르세요.";
+    renderOx();
+    return;
+  }
+
+  // 같은 말을 다시 누르면 선택 해제
+  if(i===oxSelected){
+    oxSelected=null;
+    $("oxStatus").textContent="이동할 내 말을 선택하세요.";
+    renderOx();
+    return;
+  }
+
+  // 내 말 3개를 모두 놓은 뒤에는 비어 있는 어느 칸으로든 이동 가능
+  if(!oxBoard[i]){
+    oxBoard[i]="X";
+    oxBoard[oxSelected]="";
+    oxSelected=null;
+    oxAfterMove();
   }
 }
 function oxAfterMove(){
