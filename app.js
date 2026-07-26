@@ -112,7 +112,11 @@ $("#startOnline").onclick=async()=>{if(!isHost)return;await roomRef.update({stat
 function startGame(m,v){mode=m;if(unsub){unsub();unsub=null}if(game==="chosung")startChosung();else if(game==="ox")startOX();else startTerrainSelection()}
 
 /* CHOSUNG */
-const WORDS=["가방","가위","가족","간식","갈비","감자","강아지","거울","건물","게임","겨울","고기","고양이","공원","공책","과자","교실","구름","기차","김밥","나무","냉면","노래","눈물","다리","달력","도서관","도시","동물","라면","마음","마이크","만두","모자","무지개","문어","바나나","바다","바람","박물관","밥상","배추","버스","병원","보리","복숭아","비누","비행기","사과","사람","사진","산책","선물","수박","시장","신발","아기","아이스크림","안경","야구","약속","양말","여행","연필","영화","오렌지","우산","운동","원숭이","음악","의자","자동차","자전거","장갑","전화","지갑","지하철","창문","책상","초콜릿","치킨","친구","카메라","커피","컴퓨터","토마토","학교","햄버거","휴대폰","냉장고","세탁기","청소기","에어컨","로봇","텔레비전","선풍기","제습기","전자레인지","공기청정기","안마의자","노트북","키보드","마우스","인터넷","소파","침대","식탁","옷장","화장실","주방","거실","베란다","아파트","엘리베이터","계단","주차장","편의점","백화점","마트","식당","카페","빵집","미용실","은행","우체국","경찰서","소방서","놀이터","수영장","헬스장","축구장","야구장","공항","기차역","버스터미널","여권","비밀번호","생일","결혼식","졸업식","크리스마스","어린이날","추석","설날","봄","여름","가을","겨울","아침","점심","저녁","새벽","월요일","화요일","수요일","목요일","금요일","토요일","일요일"];
+const BASE_WORDS=["가방","가위","가족","간식","갈비","감자","강아지","거울","건물","게임","겨울","고기","고양이","공원","공책","과자","교실","구름","기차","김밥","나무","냉면","노래","눈물","다리","달력","도서관","도시","동물","라면","마음","마이크","만두","모자","무지개","문어","바나나","바다","바람","박물관","밥상","배추","버스","병원","보리","복숭아","비누","비행기","사과","사람","사진","산책","선물","수박","시장","신발","아기","아이스크림","안경","야구","약속","양말","여행","연필","영화","오렌지","우산","운동","원숭이","음악","의자","자동차","자전거","장갑","전화","지갑","지하철","창문","책상","초콜릿","치킨","친구","카메라","커피","컴퓨터","토마토","학교","햄버거","휴대폰","냉장고","세탁기","청소기","에어컨","로봇","텔레비전","선풍기","제습기","전자레인지","공기청정기","안마의자","노트북","키보드","마우스","인터넷","소파","침대","식탁","옷장","화장실","주방","거실","베란다","아파트","엘리베이터","계단","주차장","편의점","백화점","마트","식당","카페","빵집","미용실","은행","우체국","경찰서","소방서","놀이터","수영장","헬스장","축구장","야구장","공항","기차역","버스터미널","여권","비밀번호","생일","결혼식","졸업식","크리스마스","어린이날","추석","설날","봄","여름","가을","겨울","아침","점심","저녁","새벽","월요일","화요일","수요일","목요일","금요일","토요일","일요일"];
+const EXTRA_WORDS=["가로등", "가습기", "간호사", "갈매기", "감기약", "강아지풀", "개나리", "거북이", "건전지", "검은콩", "겨울잠", "계란말이", "고구마", "고래", "고무장갑", "고속도로", "골목길", "골프장", "공중전화", "공휴일", "과일주스", "교과서", "구급차", "국립공원", "국수", "굴착기", "그네", "기념사진", "기린", "기상청", "김치찌개", "나비", "낙엽", "난로", "냄비", "냉동실", "농구공", "농구장", "눈사람", "다람쥐", "단풍나무", "달걀", "대나무", "대중교통", "도마", "도넛", "도시락", "독서실", "동물원", "두부", "딸기", "떡볶이", "라디오", "레몬", "리모컨", "마스크", "마술사", "망원경", "매미", "머리카락", "메모장", "면도기", "명함", "모래사장", "목걸이", "목도리", "물고기", "물병", "미끄럼틀", "미역국", "밀가루", "바구니", "바이올린", "박쥐", "반창고", "발자국", "방울토마토", "배드민턴", "배터리", "백설기", "버섯", "베개", "보조배터리", "볼펜", "분수대", "블루베리", "비둘기", "빨래건조대", "사거리", "사과주스", "사슴", "사전", "산토끼", "삼각김밥", "상추", "샌드위치", "서점", "석류", "세면대", "손가락", "손목시계", "손수건", "수건", "숟가락", "스케이트", "스키장", "스피커", "시계탑", "식기세척기", "신문", "실내화", "쌀밥", "쓰레기통", "아보카도", "아파트관리실", "악어", "알람시계", "야채", "양배추", "양파", "어묵", "에스컬레이터", "여우", "연어", "연주회", "오리", "오징어", "옥수수", "온도계", "올리브", "요구르트", "우동", "우유", "우편함", "운동화", "유리창", "은행나무", "이불", "이어폰", "인형", "자동판매기", "잠자리", "장미", "장바구니", "전기밥솥", "전기자전거", "전등", "접시", "정수기", "조끼", "주전자", "줄넘기", "지우개", "진달래", "짜장면", "참외", "책가방", "천장", "체온계", "축구공", "치약", "칫솔", "카드지갑", "카레", "칼국수", "캠핑장", "코끼리", "코트", "콜라", "쿠키", "크레파스", "탁구공", "택시", "테니스", "텐트", "파도", "파인애플", "팝콘", "포도", "포크", "프린터", "피아노", "피자", "필통", "하마", "해바라기", "해수욕장", "헤드폰", "현관문", "호랑이", "호박", "호수", "화분", "휴지통", "흰구름", "가계부", "가로수", "가스레인지", "간판", "감자튀김", "강낭콩", "개구리", "거실등", "고드름", "고추장", "골프공", "공연장", "관람차", "교통카드", "구명조끼", "국화", "그림책", "기념일", "기름종이", "김치볶음밥", "나침반", "낚싯대", "냉장실", "노을", "다리미", "단추", "달리기", "대문", "돋보기", "두루마리휴지", "드라이기", "등산화", "딸기우유", "떡국", "레인코트", "마라톤", "메론", "모기장", "목욕탕", "물티슈", "바람개비", "바퀴", "반딧불이", "발레", "방석", "배구공", "백팩", "보름달", "복사기", "분필", "비상구", "사다리", "사물함", "산딸기", "새우", "샴푸", "선글라스", "세탁세제", "소나무", "소방차", "손전등", "수도꼭지", "스마트워치", "시소", "식용유", "신호등", "실내수영장", "아령", "안전벨트", "야구모자", "양치컵", "어항", "에어프라이어", "연못", "오토바이", "완두콩", "요리책", "우비", "운동장", "유모차", "이쑤시개", "인덕션", "자물쇠", "장독대", "전기포트", "종이컵", "주방세제", "지구본", "차표", "찻잔", "창고", "체육관", "축구화", "카누", "캐리어", "커튼", "코스모스", "크레인", "탁상시계", "텀블러", "파라솔", "페인트", "포도주스", "풍선", "프라이팬", "피망", "하늘", "해돋이", "헤어드라이어", "현미밥", "호두", "호루라기", "화장대", "휴게소", "가죽장갑", "감자전", "강변", "개미", "거리", "고속버스", "공구함", "과일바구니", "교복", "구두", "기념품", "나팔꽃", "노트", "다이어리", "도마뱀", "두더지", "드럼", "등대", "라켓", "레스토랑", "마카롱", "매트리스", "머그컵", "명절음식", "모래성", "목욕가운", "물감", "미끄럼방지매트", "바비큐", "박수", "반지", "발코니", "방울", "배수구", "보온병", "분무기", "비빔밥", "사과나무", "산책로", "샤워기", "선반", "세탁바구니", "소화기", "손잡이", "수저통", "스탠드", "시리얼", "식빵", "신용카드", "실내복", "아령운동", "안내판", "양초", "어린이집", "에어컨필터", "연필깎이", "오븐", "욕조", "우산꽂이", "운전면허증", "유치원", "이불장", "인라인스케이트", "자동문", "장난감", "전동킥보드", "종이비행기", "주스", "지하주차장", "책꽂이", "청바지", "체육복", "축구선수", "카트", "캐릭터", "커피잔", "코코아", "크리스마스트리", "탁구대", "테이블", "파프리카", "편지", "포스터", "피크닉", "하모니카", "해파리", "헬멧", "호떡", "화장지", "휴대용선풍기"];
+const WORDS=[...new Set([...BASE_WORDS,...EXTRA_WORDS])];
+function shuffleWords(list=WORDS){const a=[...list];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+
 const CHO=["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
 const toCho=w=>[...w].map(c=>{let n=c.charCodeAt(0)-44032;return n>=0&&n<11172?CHO[Math.floor(n/588)]:c}).join("");
 let choList=[],choIdx=0,choStart=0,choTimer=null,choScores={},choHintTimers=[],choHintInterval=null,choOnlineRoundKey="",choAdvanceTimer=null,choAdvancing=false,choPlayers={};
@@ -312,7 +316,7 @@ function startChoHints(word){
 
 function startChosung(){
  screen("chosung");clearChoHintTimers();clearTimeout(choAdvanceTimer);choAdvanceTimer=null;choAdvancing=false;choOnlineRoundKey="";choIdx=0;choScores={};choStart=performance.now();$("#choMode").textContent=mode==="solo"?"혼자":"온라인 · 최대 4명";$("#choWinner").classList.remove("show");$("#choWinner").textContent="";
- if(mode==="solo"){$("#choScores").innerHTML=`<div class="cho-rank-item me"><b>👤 ${esc(nickname)}</b><span class="pts"><span id="choSoloScore">0</span> / 10</span></div>`;choList=[...WORDS].sort(()=>Math.random()-.5).slice(0,10);nextCho();choTimer=setInterval(()=>$("#choTime").textContent=((performance.now()-choStart)/1000).toFixed(1)+"초",100)}
+ if(mode==="solo"){$("#choScores").innerHTML=`<div class="cho-rank-item me"><b>👤 ${esc(nickname)}</b><span class="pts"><span id="choSoloScore">0</span> / 10</span></div>`;choList=shuffleWords().slice(0,10);nextCho();choTimer=setInterval(()=>$("#choTime").textContent=((performance.now()-choStart)/1000).toFixed(1)+"초",100)}
  else {choTimer=setInterval(()=>$("#choTime").textContent=((performance.now()-choStart)/1000).toFixed(1)+"초",100);setupChoOnline();}
 }
 function nextCho(){
@@ -393,7 +397,8 @@ async function setupChoOnline(){
  if(isHost){
    const current=(await stateRef.once("value")).val();
    if(!current||current.type!=="chosung"){
-     const w=WORDS[Math.floor(Math.random()*WORDS.length)];
+     const queue=shuffleWords();
+     const w=queue[0];
      await stateRef.set({
        type:"chosung",
        word:w,
@@ -403,7 +408,9 @@ async function setupChoOnline(){
        roundWinner:null,
        answeredAt:null,
        roundToken:Date.now(),
-       startedAt:Date.now()
+       startedAt:Date.now(),
+       questionQueue:queue,
+       questionIndex:0
      });
    }
  }
@@ -454,11 +461,10 @@ async function setupChoOnline(){
            await finishOnline("chosung",st.roundWinner); await roomRef.update({status:"finished",finishedAt:Date.now(),winner:st.roundWinner}); return;
          }
 
-         let w=WORDS[Math.floor(Math.random()*WORDS.length)];
-         // 바로 전 문제와 같은 단어 반복 방지
-         while(w===st.word&&WORDS.length>1){
-           w=WORDS[Math.floor(Math.random()*WORDS.length)];
-         }
+         let queue=Array.isArray(latest.questionQueue)&&latest.questionQueue.length?latest.questionQueue:shuffleWords();
+         let nextIndex=(Number(latest.questionIndex)||0)+1;
+         if(nextIndex>=queue.length){queue=shuffleWords();nextIndex=0;}
+         const w=queue[nextIndex];
 
          await stateRef.set({
            type:"chosung",
@@ -468,7 +474,9 @@ async function setupChoOnline(){
            scores:choScores,
            roundWinner:null,
            answeredAt:null,
-           roundToken:Date.now()
+           roundToken:Date.now(),
+           questionQueue:queue,
+           questionIndex:nextIndex
          });
        }finally{
          choAdvancing=false;
@@ -478,7 +486,7 @@ async function setupChoOnline(){
  };
 
  const rematchRef=roomRef.child("rematch");
- const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;const w=WORDS[Math.floor(Math.random()*WORDS.length)];await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null});await stateRef.set({type:"chosung",word:w,answer:w,round:1,scores:{},roundWinner:null,roundToken:Date.now(),startedAt:Date.now()});hideResult()};
+ const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;const queue=shuffleWords();const w=queue[0];await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null});await stateRef.set({type:"chosung",word:w,answer:w,round:1,scores:{},roundWinner:null,roundToken:Date.now(),startedAt:Date.now(),questionQueue:queue,questionIndex:0});hideResult()};
  rematchRef.on("value",rematchCb);
  stateRef.on("value",cb);
  unsub=()=>{rematchRef.off("value",rematchCb);
