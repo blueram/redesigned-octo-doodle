@@ -22,7 +22,7 @@ ensureStats();
 let game="", room="", isHost=false, roomRef=null, unsub=null, mode="solo";
 const toast=t=>{const x=$("#toast");x.textContent=t;x.classList.add("show");setTimeout(()=>x.classList.remove("show"),1800)};
 function saveStats(){localStorage.mg_stats=JSON.stringify(stats);renderStats()}
-function screen(id){$$(".screen").forEach(x=>x.classList.remove("active"));$("#"+id).classList.add("active");$("#homeBtn").classList.toggle("hidden",id==="home")}
+function screen(id){$$(".screen").forEach(x=>x.classList.remove("active"));$("#"+id).classList.add("active");$("#homeBtn").classList.toggle("hidden",id==="home");$("#titleVersion")?.classList.toggle("hidden",id!=="home")}
 function renderStats(){
  const card=(key,label)=>{const a=stats.games[key].solo,b=stats.games[key].online;const line=(n,x)=>`${n} ${x.wins}승 ${x.losses}패 ${x.draws}무 · ${x.played}전`;return `<div class="player"><div class="muted">${label}</div><div class="score">${a.wins+b.wins}승</div><div class="muted">${line("PC",a)}<br>${line("온라인",b)}</div></div>`};
  $("#myStats").innerHTML=`<div class="player"><div class="muted">초성 최고</div><div class="score">${stats.chosungBest?stats.chosungBest.toFixed(1)+"초":"-"}</div></div>${card("chosung","초성퀴즈")}${card("ox","OX")}${card("fortress","포트리스")}`;
