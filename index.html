@@ -40,13 +40,14 @@
     .tank-controls{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.tank-controls button{padding:12px 6px}.terrain-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.terrain-card{padding:8px;background:#0f172a;border:2px solid #334155;text-align:left}.terrain-card.selected{border-color:#38bdf8;box-shadow:0 0 0 3px rgba(56,189,248,.22)}.terrain-thumb{width:100%;height:78px;border-radius:10px;background:#75c8ff;display:block}.terrain-name{font-size:13px;margin-top:6px}.terrain-level{font-size:11px;color:#94a3b8}.trajectory-on{background:linear-gradient(135deg,#0891b2,#2563eb)!important;box-shadow:0 0 0 3px rgba(56,189,248,.3)}
     .ranking{width:100%;border-collapse:collapse}.ranking td,.ranking th{padding:10px;border-bottom:1px solid var(--line);text-align:left}
     .result-modal{position:fixed;inset:0;background:rgba(2,6,23,.78);display:grid;place-items:center;z-index:200;padding:18px}.result-box{width:min(430px,100%);background:#172033;border:1px solid #475569;border-radius:24px;padding:24px;text-align:center}.result-title{font-size:28px;font-weight:950}.result-detail{font-size:18px;line-height:1.7;margin:16px 0}.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#020617;color:#fff;padding:11px 16px;border-radius:999px;z-index:99;opacity:0;transition:.2s;pointer-events:none}.toast.show{opacity:1}
+    .cho-layout{display:flex;flex-direction:column;gap:10px}.cho-topline{display:grid;grid-template-columns:1fr auto auto;gap:7px;align-items:center}.cho-question{padding:18px 12px 14px;background:#0f172a;border:1px solid #334155;border-radius:18px;text-align:center}.cho-category{display:inline-flex;margin-bottom:8px}.cho-winner{display:none;border:1px solid #f59e0b;background:rgba(245,158,11,.12);border-radius:13px;padding:9px 11px;text-align:center;font-weight:900}.cho-winner.show{display:block}.cho-rank-wrap{border:1px solid #334155;background:#0b1220;border-radius:14px;padding:8px 9px}.cho-rank-title{font-size:12px;color:#94a3b8;margin-bottom:6px}.cho-rank-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.cho-rank-item{min-width:0;border-radius:10px;background:#172033;padding:7px 5px;text-align:center;font-size:12px}.cho-rank-item.me{outline:2px solid #facc15;background:#3a3210}.cho-rank-item b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cho-rank-item .pts{font-weight:950;font-size:14px}.cho-input-row{display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:8px;position:relative;z-index:2}.cho-input-row input{min-width:0}.room-status{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px}.ready-dot{font-size:12px;font-weight:800}.ready-ok{color:#4ade80}.ready-wait{color:#94a3b8}
     @media(max-width:650px){.terrain-grid{grid-template-columns:repeat(2,1fr)}.games{grid-template-columns:1fr}.game-card{min-height:105px}.players{grid-template-columns:1fr}.chosung{font-size:46px}.wrap{padding:11px}.card{padding:15px}.tank-controls{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="logo">🎮 Mini<span>Game</span> <small id="titleVersion" style="font-size:14px;color:#7dd3fc;vertical-align:middle">V4.0</small></div>
+    <div class="logo">🎮 Mini<span>Game</span> <small id="titleVersion" style="font-size:14px;color:#7dd3fc;vertical-align:middle">V4.1</small></div>
     <button id="homeBtn" class="hidden">🏠 홈</button>
   </div>
 
@@ -86,20 +87,29 @@
     <div id="roomPanel" class="card hidden">
       <div class="muted">방 코드</div><div id="roomCode" class="roomcode">------</div>
       <div class="row"><button id="copyRoom">코드 복사</button><button id="shareRoom">초대 링크 공유</button></div>
-      <div style="height:12px"></div><div id="roomPlayers" class="players"></div>
+      <div class="room-status"><span id="roomCapacity" class="muted">참가자 1 / 4명</span><button id="readyOnline" class="hidden">준비하기</button></div><div style="height:8px"></div><div id="roomPlayers" class="players"></div>
       <div style="height:12px"></div><button id="startOnline" class="primary" style="width:100%">온라인 게임 시작</button>
-      <div class="muted" style="margin-top:8px">방장만 시작할 수 있으며, 상대가 없으면 시작되지 않습니다.</div>
+      <div id="roomGuide" class="muted" style="margin-top:8px">방장만 시작할 수 있으며, 상대가 없으면 시작되지 않습니다.</div>
     </div>
   </section>
 
   <section id="chosung" class="screen">
-    <div class="card">
-      <div class="row"><span class="pill" id="choMode">혼자</span><span class="pill" id="choRound">1 / 10</span><span class="pill" id="choTime">0.0초</span></div>
-      <div id="choScores" class="players" style="margin:12px 0"></div>
-      <div class="rulebox"><b>게임 방법</b><br>단어의 첫 자음만 표시됩니다. 초성을 보고 원래 단어를 입력하세요.<br><span class="muted">예: ㅅㅂ → 수박 · ㄱㅇㅈ → 강아지</span></div>
-      <div class="qbox"><div class="muted">초성을 보고 단어를 맞혀보세요</div><div class="chosung" id="choQ">ㄱㅁ</div><div id="choHint" class="cho-hint"></div></div>
-      <div class="row"><input id="choAnswer" autocomplete="off" placeholder="정답 입력"><button id="choSubmit" class="primary">정답</button></div>
-      <div style="height:12px"></div><div class="progress"><i id="choProgress"></i></div>
+    <div class="card cho-layout">
+      <div class="cho-topline"><span class="pill" id="choMode">혼자</span><span class="pill" id="choRound">1 / 10</span><span class="pill" id="choTime">0.0초</span></div>
+      <div class="progress"><i id="choProgress"></i></div>
+      <div class="cho-question">
+        <span id="choCategory" class="pill cho-category">일상 단어</span>
+        <div class="muted">초성을 보고 단어를 맞혀보세요</div>
+        <div class="chosung" id="choQ">ㄱㅁ</div>
+        <div id="choHint" class="cho-hint"></div>
+      </div>
+      <div id="choWinner" class="cho-winner" aria-live="polite"></div>
+      <div class="cho-rank-wrap">
+        <div class="cho-rank-title">실시간 순위 · 입력창 바로 위</div>
+        <div id="choScores" class="cho-rank-strip"></div>
+      </div>
+      <div class="cho-input-row"><input id="choAnswer" autocomplete="off" maxlength="20" placeholder="정답을 입력하세요"><button id="choSubmit" class="primary">제출</button></div>
+      <div class="muted" style="text-align:center;font-size:12px">가장 먼저 입력된 정답 1명만 점수를 얻습니다.</div>
     </div>
   </section>
 

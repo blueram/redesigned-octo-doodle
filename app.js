@@ -43,20 +43,21 @@ $("#saveNick").onclick=()=>{nickname=$("#nickname").value.trim()||nickname;local
 $$('[data-game]').forEach(b=>b.onclick=()=>openLobby(b.dataset.game));
 $("#homeBtn").onclick=leave;
 function gameName(g){return g==="chosung"?"초성게임":g==="ox"?"OX 이동게임":"포트리스"}
-function openLobby(g){game=g;$("#lobbyTitle").textContent=gameName(g)+" 대기실";$("#roomPanel").classList.add("hidden");screen("lobby")}
+function maxPlayersForGame(g=game){return g==="chosung"?4:2}
+function openLobby(g){game=g;$("#lobbyTitle").textContent=gameName(g)+" 대기실";$("#roomPanel").classList.add("hidden");$("#roomGuide").textContent=g==="chosung"?"초성퀴즈는 최대 4명이며, 2명 이상이면 방장이 시작할 수 있습니다.":"방장만 시작할 수 있으며, 상대가 없으면 시작되지 않습니다.";screen("lobby")}
 function stopHeartbeat(){clearInterval(heartbeatTimer);heartbeatTimer=null}
 function activePlayers(players){const now=Date.now();return Object.fromEntries(Object.entries(players||{}).filter(([,p])=>p&&p.connected!==false&&now-(p.lastSeen||now)<35000))}
 async function leave(){hideResult();stopHeartbeat();if(roomRef){await roomRef.child("players/"+playerId).remove().catch(()=>{});roomRef=null}if(unsub)unsub();unsub=null;room="";game="";screen("home");hall()}
 function beginHeartbeat(){stopHeartbeat();const ping=()=>roomRef&&roomRef.child("players/"+playerId).update({connected:true,lastSeen:firebase.database.ServerValue.TIMESTAMP}).catch(()=>{});ping();heartbeatTimer=setInterval(ping,10000)}
 async function registerPlayer(asHost=false){
- const player={nick:nickname,userId:uid,deviceId,sessionId:playerId,score:0,connected:true,lastSeen:firebase.database.ServerValue.TIMESTAMP,joinedAt:firebase.database.ServerValue.TIMESTAMP};
+ const player={nick:nickname,userId:uid,deviceId,sessionId:playerId,score:0,ready:asHost,connected:true,lastSeen:firebase.database.ServerValue.TIMESTAMP,joinedAt:firebase.database.ServerValue.TIMESTAMP};
  const result=await roomRef.transaction(r=>{
    if(!r)return asHost?{game,status:"waiting",host:playerId,created:Date.now(),players:{[playerId]:player}}:undefined;
    if(r.game!==game)return;
    r.players=r.players||{};
    const live=activePlayers(r.players);
    Object.keys(r.players).forEach(id=>{if(!live[id]&&id!==playerId)delete r.players[id]});
-   if(!r.players[playerId]&&Object.keys(activePlayers(r.players)).length>=2)return;
+   if(!r.players[playerId]&&Object.keys(activePlayers(r.players)).length>=maxPlayersForGame(r.game))return;
    r.players[playerId]=player;
    if(!r.host||!r.players[r.host])r.host=playerId;
    return r;
@@ -66,10 +67,11 @@ async function registerPlayer(asHost=false){
 }
 $("#soloPlay").onclick=()=>startGame("solo");
 $("#createRoom").onclick=async()=>{if(!db)return toast("Firebase 연결에 실패했습니다.");room=Math.random().toString(36).slice(2,8).toUpperCase();isHost=true;mode="online";roomRef=db.ref("rooms/"+room);try{await registerPlayer(true);showRoom();watchRoom()}catch{toast("방을 만들지 못했습니다.")}};
-$("#joinRoom").onclick=async()=>{if(!db)return toast("Firebase 연결에 실패했습니다.");room=$("#roomInput").value.trim().toUpperCase();if(room.length<4)return toast("방 코드를 확인해 주세요.");roomRef=db.ref("rooms/"+room);const snap=await roomRef.once("value"),v=snap.val();if(!v)return toast("방을 찾을 수 없습니다.");if(v.game!==game)return toast("다른 게임의 방입니다.");mode="online";try{await registerPlayer(false)}catch{return toast("현재 방에 두 명이 접속 중입니다.")}const fresh=(await roomRef.once("value")).val()||{};isHost=fresh.host===playerId;showRoom();watchRoom()};
+$("#joinRoom").onclick=async()=>{if(!db)return toast("Firebase 연결에 실패했습니다.");room=$("#roomInput").value.trim().toUpperCase();if(room.length<4)return toast("방 코드를 확인해 주세요.");roomRef=db.ref("rooms/"+room);const snap=await roomRef.once("value"),v=snap.val();if(!v)return toast("방을 찾을 수 없습니다.");if(v.game!==game)return toast("다른 게임의 방입니다.");mode="online";try{await registerPlayer(false)}catch{return toast(`현재 방은 최대 ${maxPlayersForGame()}명까지 접속할 수 있습니다.`)}const fresh=(await roomRef.once("value")).val()||{};isHost=fresh.host===playerId;showRoom();watchRoom()};
 function showRoom(){$("#roomPanel").classList.remove("hidden");$("#roomCode").textContent=room}
-function watchRoom(){const cb=s=>{const v=s.val();if(!v)return;const ps=activePlayers(v.players||{});renderRoomPlayers(ps);isHost=v.host===playerId;$("#startOnline").disabled=!isHost||Object.keys(ps).length<2;if(v.status==="playing")startGame("online",v)};roomRef.on("value",cb);unsub=()=>roomRef.off("value",cb)}
-function renderRoomPlayers(ps){$("#roomPlayers").innerHTML=Object.entries(ps).map(([id,p])=>`<div class="player ${id===playerId?"me":""}"><b>${esc(p.nick)}</b><div class="muted">${id===playerId?"나":"상대"}</div></div>`).join("")}
+function watchRoom(){const cb=s=>{const v=s.val();if(!v)return;const ps=activePlayers(v.players||{});renderRoomPlayers(ps);isHost=v.host===playerId;const count=Object.keys(ps).length,max=maxPlayersForGame(v.game);const allReady=Object.entries(ps).every(([id,p])=>id===v.host||p.ready);$("#roomCapacity").textContent=`참가자 ${count} / ${max}명`;$("#readyOnline").classList.toggle("hidden",isHost||v.game!=="chosung");$("#readyOnline").textContent=ps[playerId]?.ready?"준비 취소":"준비하기";$("#startOnline").disabled=!isHost||count<2||(v.game==="chosung"&&!allReady);$("#roomGuide").textContent=v.game==="chosung"?(count<2?"2명 이상 입장하면 시작할 수 있습니다.":(!allReady?"참가자 전원이 준비되면 방장이 시작할 수 있습니다.":"준비 완료! 방장이 게임을 시작할 수 있습니다.")):"방장만 시작할 수 있으며, 상대가 없으면 시작되지 않습니다.";if(v.status==="playing")startGame("online",v)};roomRef.on("value",cb);unsub=()=>roomRef.off("value",cb)}
+function renderRoomPlayers(ps){$("#roomPlayers").innerHTML=Object.entries(ps).map(([id,p])=>`<div class="player ${id===playerId?"me":""}"><b>${esc(p.nick)}</b><div class="ready-dot ${p.ready?"ready-ok":"ready-wait"}">${id===playerId?"나 · ":""}${p.ready?"준비 완료":"준비 중"}</div></div>`).join("")}
+$("#readyOnline").onclick=async()=>{if(!roomRef||isHost)return;const ref=roomRef.child("players/"+playerId+"/ready");const snap=await ref.once("value");await ref.set(!snap.val())}
 $("#copyRoom").onclick=()=>navigator.clipboard?.writeText(room).then(()=>toast("방 코드를 복사했습니다."));
 $("#shareRoom").onclick=async()=>{const url=location.origin+location.pathname+"?game="+game+"&room="+room;try{await navigator.share({title:"MiniGame 초대",text:`${nickname}님의 ${gameName(game)} 방`,url})}catch{navigator.clipboard?.writeText(url);toast("초대 링크를 복사했습니다.")}};
 $("#startOnline").onclick=async()=>{if(!isHost)return;await roomRef.update({status:"playing",started:Date.now(),state:null,rematch:null})};
@@ -79,7 +81,7 @@ function startGame(m,v){mode=m;if(unsub){unsub();unsub=null}if(game==="chosung")
 const WORDS=["가방","가위","가족","간식","갈비","감자","강아지","거울","건물","게임","겨울","고기","고양이","공원","공책","과자","교실","구름","기차","김밥","나무","냉면","노래","눈물","다리","달력","도서관","도시","동물","라면","마음","마이크","만두","모자","무지개","문어","바나나","바다","바람","박물관","밥상","배추","버스","병원","보리","복숭아","비누","비행기","사과","사람","사진","산책","선물","수박","시장","신발","아기","아이스크림","안경","야구","약속","양말","여행","연필","영화","오렌지","우산","운동","원숭이","음악","의자","자동차","자전거","장갑","전화","지갑","지하철","창문","책상","초콜릿","치킨","친구","카메라","커피","컴퓨터","토마토","학교","햄버거","휴대폰","냉장고","세탁기","청소기","에어컨","로봇","텔레비전","선풍기","제습기","전자레인지","공기청정기","안마의자","노트북","키보드","마우스","인터넷","소파","침대","식탁","옷장","화장실","주방","거실","베란다","아파트","엘리베이터","계단","주차장","편의점","백화점","마트","식당","카페","빵집","미용실","은행","우체국","경찰서","소방서","놀이터","수영장","헬스장","축구장","야구장","공항","기차역","버스터미널","여권","비밀번호","생일","결혼식","졸업식","크리스마스","어린이날","추석","설날","봄","여름","가을","겨울","아침","점심","저녁","새벽","월요일","화요일","수요일","목요일","금요일","토요일","일요일"];
 const CHO=["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
 const toCho=w=>[...w].map(c=>{let n=c.charCodeAt(0)-44032;return n>=0&&n<11172?CHO[Math.floor(n/588)]:c}).join("");
-let choList=[],choIdx=0,choStart=0,choTimer=null,choScores={},choHintTimers=[],choHintInterval=null,choOnlineRoundKey="",choAdvanceTimer=null,choAdvancing=false;
+let choList=[],choIdx=0,choStart=0,choTimer=null,choScores={},choHintTimers=[],choHintInterval=null,choOnlineRoundKey="",choAdvanceTimer=null,choAdvancing=false,choPlayers={};
 
 const CHO_HINTS={
 "가방":["물건","외출할 때 들고 다니는 물건","가○"],
@@ -261,6 +263,7 @@ function getChoHints(word){
 function startChoHints(word){
  clearChoHintTimers();
  const hints=getChoHints(word);
+ $("#choCategory").textContent=hints[0]||"일상 단어";
  let step=0;
 
  const showHint=()=>{
@@ -274,9 +277,9 @@ function startChoHints(word){
 }
 
 function startChosung(){
- screen("chosung");clearChoHintTimers();clearTimeout(choAdvanceTimer);choAdvanceTimer=null;choAdvancing=false;choOnlineRoundKey="";choIdx=0;choScores={};choStart=performance.now();$("#choMode").textContent=mode==="solo"?"혼자":"온라인 10점 선승";
- if(mode==="solo"){$("#choScores").innerHTML=`<div class="player me"><div class="muted">진행</div><b>${esc(nickname)}</b><div class="score"><span id="choSoloScore">0</span> / 10</div></div>`;choList=[...WORDS].sort(()=>Math.random()-.5).slice(0,10);nextCho();choTimer=setInterval(()=>$("#choTime").textContent=((performance.now()-choStart)/1000).toFixed(1)+"초",100)}
- else setupChoOnline();
+ screen("chosung");clearChoHintTimers();clearTimeout(choAdvanceTimer);choAdvanceTimer=null;choAdvancing=false;choOnlineRoundKey="";choIdx=0;choScores={};choStart=performance.now();$("#choMode").textContent=mode==="solo"?"혼자":"온라인 · 최대 4명";$("#choWinner").classList.remove("show");$("#choWinner").textContent="";
+ if(mode==="solo"){$("#choScores").innerHTML=`<div class="cho-rank-item me"><b>👤 ${esc(nickname)}</b><span class="pts"><span id="choSoloScore">0</span> / 10</span></div>`;choList=[...WORDS].sort(()=>Math.random()-.5).slice(0,10);nextCho();choTimer=setInterval(()=>$("#choTime").textContent=((performance.now()-choStart)/1000).toFixed(1)+"초",100)}
+ else {choTimer=setInterval(()=>$("#choTime").textContent=((performance.now()-choStart)/1000).toFixed(1)+"초",100);setupChoOnline();}
 }
 function nextCho(){
  if(choIdx>=choList.length)return finishChoSolo();
@@ -284,7 +287,7 @@ function nextCho(){
  $("#choQ").textContent=toCho(w);
  $("#choRound").textContent=`${choIdx+1} / ${choList.length}`;
  $("#choProgress").style.width=(choIdx/choList.length*100)+"%";const soloScore=$("#choSoloScore");if(soloScore)soloScore.textContent=choIdx;
- $("#choAnswer").value="";
+ $("#choAnswer").value="";$("#choAnswer").disabled=false;$("#choSubmit").disabled=false;$("#choWinner").classList.remove("show");
  startChoHints(w);
  $("#choAnswer").focus();
 }
@@ -306,11 +309,12 @@ function submitCho(){
    roomRef.child("state").transaction(st=>{
      if(!st||st.type!=="chosung"||st.answer!==a||st.roundWinner)return;
      st.roundWinner=playerId;
+     st.answeredAt=Date.now();
      st.scores=st.scores||{};
      st.scores[playerId]=(st.scores[playerId]||0)+1;
      return st;
    }).then(result=>{
-     if(!result.committed)toast("오답입니다. 다시 입력해 보세요.");
+     if(!result.committed)toast("오답이거나 다른 참가자가 먼저 맞혔습니다.");
    });
  }
 }
@@ -330,6 +334,7 @@ async function setupChoOnline(){
        round:1,
        scores:{},
        roundWinner:null,
+       answeredAt:null,
        roundToken:Date.now(),
        startedAt:Date.now()
      });
@@ -342,8 +347,8 @@ async function setupChoOnline(){
 
    choScores=st.scores||{};
    renderChoScores();
-   const top=Math.max(...Object.values(choScores),0);
-   if(top>=10){clearChoHintTimers();const winner=Object.keys(choScores).find(id=>choScores[id]===top);roomRef.child("players/"+winner).once("value").then(ps=>{const wn=ps.val()?.nick||"상대";const sec=((Date.now()-((st.startedAt)||Date.now()))/1000).toFixed(1);showResult("🏆 "+wn+" 우승",`경기 시간 <b>${sec}초</b>`,"다시하기","방에서 나가기");$("#resultRetry").onclick=()=>requestRematch("chosung");$("#resultExit").onclick=()=>{hideResult();leave()}});return;}
+   const top=Math.max(...Object.values(choScores),0);$("#choProgress").style.width=Math.min(100,top*10)+"%";
+   if(top>=10){clearChoHintTimers();const winner=Object.keys(choScores).find(id=>choScores[id]===top);roomRef.child("players").once("value").then(ps=>{const players=ps.val()||{},wn=players[winner]?.nick||"상대";const sec=((Date.now()-((st.startedAt)||Date.now()))/1000).toFixed(1);const ranking=Object.entries(players).sort(([a],[b])=>(choScores[b]||0)-(choScores[a]||0)).map(([id,p],i)=>`${i+1}위 ${esc(p.nick)} · ${choScores[id]||0}점`).join("<br>");showResult("🏆 "+wn+" 우승",`${ranking}<br><br>경기 시간 <b>${sec}초</b>`,"다시하기","방에서 나가기");$("#resultRetry").onclick=()=>requestRematch("chosung");$("#resultExit").onclick=()=>{hideResult();leave()}});return;}
 
    // 같은 문제에서 점수/정답 상태만 바뀐 경우 화면과 힌트 타이머를 다시 시작하지 않음
    const roundKey=`${st.round||1}_${st.roundToken||st.word}`;
@@ -352,9 +357,16 @@ async function setupChoOnline(){
      clearChoHintTimers();
      $("#choQ").textContent=toCho(st.word);
      $("#choRound").textContent=`${st.round||1} 라운드`;
-     $("#choAnswer").value="";
+     $("#choAnswer").value="";$("#choAnswer").disabled=false;$("#choSubmit").disabled=false;$("#choWinner").classList.remove("show");$("#choWinner").textContent="";
      startChoHints(st.word);
      $("#choAnswer").focus();
+   }
+
+   if(st.roundWinner){
+     $("#choAnswer").disabled=true;$("#choSubmit").disabled=true;
+     const showWinner=name=>{$("#choWinner").innerHTML=`👑 ${esc(name)}님 정답! <span style="color:#facc15">${esc(st.answer)}</span>`;$("#choWinner").classList.add("show")};
+     const known=choPlayers[st.roundWinner]?.nick;
+     if(known)showWinner(known);else roomRef.child("players/"+st.roundWinner+"/nick").once("value").then(x=>showWinner(x.val()||"참가자"));
    }
 
    // 방장만 다음 문제로 이동하며, 같은 라운드에서 한 번만 예약
@@ -388,12 +400,13 @@ async function setupChoOnline(){
            round:(st.round||1)+1,
            scores:choScores,
            roundWinner:null,
+           answeredAt:null,
            roundToken:Date.now()
          });
        }finally{
          choAdvancing=false;
        }
-     },900);
+     },3000);
    }
  };
 
@@ -402,6 +415,7 @@ async function setupChoOnline(){
  rematchRef.on("value",rematchCb);
  stateRef.on("value",cb);
  unsub=()=>{rematchRef.off("value",rematchCb);
+   clearInterval(choTimer);choTimer=null;
    clearTimeout(choAdvanceTimer);
    choAdvanceTimer=null;
    choAdvancing=false;
@@ -411,14 +425,15 @@ async function setupChoOnline(){
 }
 function renderChoScores(){
  roomRef.child("players").once("value").then(s=>{
-   const players=s.val()||{};
-   const entries=Object.entries(players).sort(([a],[b])=>a===playerId?-1:b===playerId?1:0);
-   $("#choScores").innerHTML=entries.map(([id,p])=>
-     `<div class="player ${id===playerId?"me":""}">
-       <div class="muted">${id===playerId?"나":"상대"}</div>
-       <b>${esc(p.nick)}</b>
-       <div class="score">${choScores[id]||0}점</div>
-     </div>`
+   choPlayers=activePlayers(s.val()||{});
+   const entries=Object.entries(choPlayers).sort(([a,pa],[b,pb])=>{
+     const diff=(choScores[b]||0)-(choScores[a]||0);
+     if(diff)return diff;
+     if(a===playerId)return -1;if(b===playerId)return 1;
+     return (pa.joinedAt||0)-(pb.joinedAt||0);
+   });
+   $("#choScores").innerHTML=entries.map(([id,p],i)=>
+     `<div class="cho-rank-item ${id===playerId?"me":""}"><b>${["🥇","🥈","🥉","4️⃣"][i]||i+1} ${esc(p.nick)}</b><span class="pts">${choScores[id]||0}점</span></div>`
    ).join("");
  });
 }
