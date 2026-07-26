@@ -6,6 +6,10 @@ const firebaseConfig={databaseURL:DB_URL};
 let db=null;
 try{firebase.initializeApp(firebaseConfig);db=firebase.database();}catch(e){console.warn(e)}
 const uid=localStorage.mg_uid||(localStorage.mg_uid=crypto.randomUUID());
+const deviceId=localStorage.mg_device_id||(localStorage.mg_device_id=crypto.randomUUID());
+const sessionId=sessionStorage.mg_session_id||(sessionStorage.mg_session_id=crypto.randomUUID());
+const playerId=sessionId;
+let heartbeatTimer=null;
 const animals=["호랑이","토끼","여우","판다","수달","사자","돌고래","고양이","강아지","펭귄"];
 let nickname=localStorage.mg_nick||animals[Math.floor(Math.random()*animals.length)]+Math.floor(100+Math.random()*900);
 let stats=JSON.parse(localStorage.mg_stats||'{}');
@@ -29,56 +33,47 @@ async function recordGame(kind,result,duration=0,playMode=mode){
 }
 function showResult(title,detail,retryText="다시하기",exitText="게임 종료"){$("#resultTitle").textContent=title;$("#resultDetail").innerHTML=detail;$("#resultRetry").textContent=retryText;$("#resultExit").textContent=exitText;$("#resultModal").classList.remove("hidden")}
 function hideResult(){$("#resultModal").classList.add("hidden")}
-async function requestRematch(kind){if(mode!=="online"){hideResult();return kind==="chosung"?startChosung():kind==="ox"?startOX():startTerrainSelection()}await roomRef.child("rematch/"+uid).set(true);$("#resultDetail").textContent="상대방의 재경기 선택을 기다리는 중..."}
+async function requestRematch(kind){if(mode!=="online"){hideResult();return kind==="chosung"?startChosung():kind==="ox"?startOX():startTerrainSelection()}await roomRef.child("rematch/"+playerId).set(true);$("#resultDetail").textContent="상대방의 재경기 선택을 기다리는 중..."}
 $("#resetStats").onclick=async()=>{if(!confirm("내 모든 전적을 삭제하시겠습니까? 복구할 수 없습니다."))return;stats={chosungBest:null,games:{}};ensureStats();saveStats();if(db)await db.ref(`playerStats/${uid}`).remove().catch(()=>{});toast("내 전적을 초기화했습니다.")};
 
-async function hall(){
- if(!db)return;
- const snap=await db.ref("hall").once("value"), v=snap.val()||{};
- const rows=[];
- Object.entries(v).forEach(([id,r])=>rows.push(r));
- rows.sort((a,b)=>(b.total||0)-(a.total||0));
- $("#hall").innerHTML=rows.slice(0,10).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.nick||"익명")}</td><td>${r.total||0}승</td></tr>`).join("")||'<tr><td colspan="3" class="muted">아직 기록이 없습니다.</td></tr>';
-}
+async function hall(){if(!db)return;const snap=await db.ref("hall").once("value"),v=snap.val()||{};const rows=[];Object.entries(v).forEach(([id,r])=>rows.push(r));rows.sort((a,b)=>(b.total||0)-(a.total||0));$("#hall").innerHTML=rows.slice(0,10).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.nick||"익명")}</td><td>${r.total||0}승</td></tr>`).join("")||'<tr><td colspan="3" class="muted">아직 기록이 없습니다.</td></tr>'}
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 $("#nickname").value=nickname; renderStats(); hall();
 $("#saveNick").onclick=()=>{nickname=$("#nickname").value.trim()||nickname;localStorage.mg_nick=nickname;toast("닉네임을 저장했습니다.")};
-$$("[data-game]").forEach(b=>b.onclick=()=>openLobby(b.dataset.game));
+$$('[data-game]').forEach(b=>b.onclick=()=>openLobby(b.dataset.game));
 $("#homeBtn").onclick=leave;
 function gameName(g){return g==="chosung"?"초성게임":g==="ox"?"OX 이동게임":"포트리스"}
 function openLobby(g){game=g;$("#lobbyTitle").textContent=gameName(g)+" 대기실";$("#roomPanel").classList.add("hidden");screen("lobby")}
-function leave(){hideResult();
- if(roomRef){roomRef.child("players/"+uid).remove();roomRef=null}
- if(unsub)unsub(); room=""; game=""; screen("home");hall();
+function stopHeartbeat(){clearInterval(heartbeatTimer);heartbeatTimer=null}
+function activePlayers(players){const now=Date.now();return Object.fromEntries(Object.entries(players||{}).filter(([,p])=>p&&p.connected!==false&&now-(p.lastSeen||now)<35000))}
+async function leave(){hideResult();stopHeartbeat();if(roomRef){await roomRef.child("players/"+playerId).remove().catch(()=>{});roomRef=null}if(unsub)unsub();unsub=null;room="";game="";screen("home");hall()}
+function beginHeartbeat(){stopHeartbeat();const ping=()=>roomRef&&roomRef.child("players/"+playerId).update({connected:true,lastSeen:firebase.database.ServerValue.TIMESTAMP}).catch(()=>{});ping();heartbeatTimer=setInterval(ping,10000)}
+async function registerPlayer(asHost=false){
+ const player={nick:nickname,userId:uid,deviceId,sessionId:playerId,score:0,connected:true,lastSeen:firebase.database.ServerValue.TIMESTAMP,joinedAt:firebase.database.ServerValue.TIMESTAMP};
+ const result=await roomRef.transaction(r=>{
+   if(!r)return asHost?{game,status:"waiting",host:playerId,created:Date.now(),players:{[playerId]:player}}:undefined;
+   if(r.game!==game)return;
+   r.players=r.players||{};
+   const live=activePlayers(r.players);
+   Object.keys(r.players).forEach(id=>{if(!live[id]&&id!==playerId)delete r.players[id]});
+   if(!r.players[playerId]&&Object.keys(activePlayers(r.players)).length>=2)return;
+   r.players[playerId]=player;
+   if(!r.host||!r.players[r.host])r.host=playerId;
+   return r;
+ });
+ if(!result.committed)throw new Error("FULL_OR_INVALID");
+ roomRef.child("players/"+playerId).onDisconnect().remove();beginHeartbeat();
 }
 $("#soloPlay").onclick=()=>startGame("solo");
-$("#createRoom").onclick=async()=>{
- if(!db)return toast("Firebase 연결에 실패했습니다.");
- room=Math.random().toString(36).slice(2,8).toUpperCase();isHost=true;mode="online";
- roomRef=db.ref("rooms/"+room);
- await roomRef.set({game,status:"waiting",host:uid,created:Date.now(),players:{[uid]:{nick:nickname,score:0,online:true}}});
- roomRef.child("players/"+uid).onDisconnect().remove();showRoom();watchRoom();
-};
-$("#joinRoom").onclick=async()=>{
- if(!db)return toast("Firebase 연결에 실패했습니다.");
- room=$("#roomInput").value.trim().toUpperCase();
- if(room.length<4)return toast("방 코드를 확인해 주세요.");
- roomRef=db.ref("rooms/"+room);const snap=await roomRef.once("value"),v=snap.val();
- if(!v)return toast("방을 찾을 수 없습니다."); if(v.game!==game)return toast("다른 게임의 방입니다.");
- if(Object.keys(v.players||{}).length>=2&&!v.players?.[uid])return toast("방이 가득 찼습니다.");
- isHost=v.host===uid;mode="online";await roomRef.child("players/"+uid).set({nick:nickname,score:0,online:true});
- roomRef.child("players/"+uid).onDisconnect().remove();showRoom();watchRoom();
-};
+$("#createRoom").onclick=async()=>{if(!db)return toast("Firebase 연결에 실패했습니다.");room=Math.random().toString(36).slice(2,8).toUpperCase();isHost=true;mode="online";roomRef=db.ref("rooms/"+room);try{await registerPlayer(true);showRoom();watchRoom()}catch{toast("방을 만들지 못했습니다.")}};
+$("#joinRoom").onclick=async()=>{if(!db)return toast("Firebase 연결에 실패했습니다.");room=$("#roomInput").value.trim().toUpperCase();if(room.length<4)return toast("방 코드를 확인해 주세요.");roomRef=db.ref("rooms/"+room);const snap=await roomRef.once("value"),v=snap.val();if(!v)return toast("방을 찾을 수 없습니다.");if(v.game!==game)return toast("다른 게임의 방입니다.");mode="online";try{await registerPlayer(false)}catch{return toast("현재 방에 두 명이 접속 중입니다.")}const fresh=(await roomRef.once("value")).val()||{};isHost=fresh.host===playerId;showRoom();watchRoom()};
 function showRoom(){$("#roomPanel").classList.remove("hidden");$("#roomCode").textContent=room}
-function watchRoom(){
- const cb=s=>{const v=s.val();if(!v)return;renderRoomPlayers(v.players||{});isHost=v.host===uid;$("#startOnline").disabled=!isHost||Object.keys(v.players||{}).length<2;if(v.status==="playing")startGame("online",v)};
- roomRef.on("value",cb);unsub=()=>roomRef.off("value",cb);
-}
-function renderRoomPlayers(ps){$("#roomPlayers").innerHTML=Object.entries(ps).map(([id,p])=>`<div class="player ${id===uid?"me":""}"><b>${esc(p.nick)}</b><div class="muted">${id===uid?"나":"상대"}</div></div>`).join("")}
+function watchRoom(){const cb=s=>{const v=s.val();if(!v)return;const ps=activePlayers(v.players||{});renderRoomPlayers(ps);isHost=v.host===playerId;$("#startOnline").disabled=!isHost||Object.keys(ps).length<2;if(v.status==="playing")startGame("online",v)};roomRef.on("value",cb);unsub=()=>roomRef.off("value",cb)}
+function renderRoomPlayers(ps){$("#roomPlayers").innerHTML=Object.entries(ps).map(([id,p])=>`<div class="player ${id===playerId?"me":""}"><b>${esc(p.nick)}</b><div class="muted">${id===playerId?"나":"상대"}</div></div>`).join("")}
 $("#copyRoom").onclick=()=>navigator.clipboard?.writeText(room).then(()=>toast("방 코드를 복사했습니다."));
 $("#shareRoom").onclick=async()=>{const url=location.origin+location.pathname+"?game="+game+"&room="+room;try{await navigator.share({title:"MiniGame 초대",text:`${nickname}님의 ${gameName(game)} 방`,url})}catch{navigator.clipboard?.writeText(url);toast("초대 링크를 복사했습니다.")}};
-$("#startOnline").onclick=async()=>{if(!isHost)return;await roomRef.update({status:"playing",started:Date.now(),state:null})};
-function startGame(m,v){mode=m;if(unsub){unsub();unsub=null} if(game==="chosung")startChosung();else if(game==="ox")startOX();else startTerrainSelection()}
+$("#startOnline").onclick=async()=>{if(!isHost)return;await roomRef.update({status:"playing",started:Date.now(),state:null,rematch:null})};
+function startGame(m,v){mode=m;if(unsub){unsub();unsub=null}if(game==="chosung")startChosung();else if(game==="ox")startOX();else startTerrainSelection()}
 
 /* CHOSUNG */
 const WORDS=["가방","가위","가족","간식","갈비","감자","강아지","거울","건물","게임","겨울","고기","고양이","공원","공책","과자","교실","구름","기차","김밥","나무","냉면","노래","눈물","다리","달력","도서관","도시","동물","라면","마음","마이크","만두","모자","무지개","문어","바나나","바다","바람","박물관","밥상","배추","버스","병원","보리","복숭아","비누","비행기","사과","사람","사진","산책","선물","수박","시장","신발","아기","아이스크림","안경","야구","약속","양말","여행","연필","영화","오렌지","우산","운동","원숭이","음악","의자","자동차","자전거","장갑","전화","지갑","지하철","창문","책상","초콜릿","치킨","친구","카메라","커피","컴퓨터","토마토","학교","햄버거","휴대폰","냉장고","세탁기","청소기","에어컨","로봇","텔레비전","선풍기","제습기","전자레인지","공기청정기","안마의자","노트북","키보드","마우스","인터넷","소파","침대","식탁","옷장","화장실","주방","거실","베란다","아파트","엘리베이터","계단","주차장","편의점","백화점","마트","식당","카페","빵집","미용실","은행","우체국","경찰서","소방서","놀이터","수영장","헬스장","축구장","야구장","공항","기차역","버스터미널","여권","비밀번호","생일","결혼식","졸업식","크리스마스","어린이날","추석","설날","봄","여름","가을","겨울","아침","점심","저녁","새벽","월요일","화요일","수요일","목요일","금요일","토요일","일요일"];
@@ -310,9 +305,9 @@ function submitCho(){
  }else if(roomRef){
    roomRef.child("state").transaction(st=>{
      if(!st||st.type!=="chosung"||st.answer!==a||st.roundWinner)return;
-     st.roundWinner=uid;
+     st.roundWinner=playerId;
      st.scores=st.scores||{};
-     st.scores[uid]=(st.scores[uid]||0)+1;
+     st.scores[playerId]=(st.scores[playerId]||0)+1;
      return st;
    }).then(result=>{
      if(!result.committed)toast("오답입니다. 다시 입력해 보세요.");
@@ -417,10 +412,10 @@ async function setupChoOnline(){
 function renderChoScores(){
  roomRef.child("players").once("value").then(s=>{
    const players=s.val()||{};
-   const entries=Object.entries(players).sort(([a],[b])=>a===uid?-1:b===uid?1:0);
+   const entries=Object.entries(players).sort(([a],[b])=>a===playerId?-1:b===playerId?1:0);
    $("#choScores").innerHTML=entries.map(([id,p])=>
-     `<div class="player ${id===uid?"me":""}">
-       <div class="muted">${id===uid?"나":"상대"}</div>
+     `<div class="player ${id===playerId?"me":""}">
+       <div class="muted">${id===playerId?"나":"상대"}</div>
        <b>${esc(p.nick)}</b>
        <div class="score">${choScores[id]||0}점</div>
      </div>`
@@ -434,10 +429,10 @@ const wins=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
 
 function startOX(){
  screen("ox");
- ox={type:"ox",board:Array(9).fill(""),turn:"X",me:"X",roundWins:{X:0,O:0},over:false};
+ ox={type:"ox",board:Array(9).fill(""),turn:Math.random()<.5?"X":"O",me:"X",roundWins:{X:0,O:0},over:false,nextStarter:null};
  oxSelected=null;
  buildOX();
- if(mode==="online")setupOXOnline(); else renderOX();
+ if(mode==="online")setupOXOnline(); else {renderOX();toast(`${ox.turn===ox.me?"내가":"PC가"} 먼저 시작합니다.`);if(ox.turn==="O")setTimeout(oxAIMove,700);} 
 }
 
 function buildOX(){
@@ -537,6 +532,7 @@ async function onlineOXCellClick(i){
      if(winner){
        st.over=true;
        st.roundWins[winner]=(st.roundWins[winner]||0)+1;
+       st.nextStarter=winner==="X"?"O":"X";
      }else{
        st.turn=other;
      }
@@ -561,12 +557,13 @@ function finishOXTurn(){
  if(winner){
    ox.over=true;
    ox.roundWins[winner]=(ox.roundWins[winner]||0)+1;
+   ox.nextStarter=winner==="X"?"O":"X";
    renderOX();
 
    if(ox.roundWins[winner]>=3){
      const myWin=winner===ox.me;
      recordGame("ox",myWin?"win":"loss");
-     if(mode==="online"&&myWin)finishOnline("ox",uid);
+     if(mode==="online"&&myWin)finishOnline("ox",playerId);
      $("#oxStatus").textContent=`${winner} 최종 승리 · 3승 달성`;
      showResult(myWin?"🏆 OX 승리":"OX 패배",`${ox.roundWins[ox.me]||0} : ${ox.roundWins[ox.me==="X"?"O":"X"]||0}`,"다시 대전하기",mode==="online"?"방에서 나가기":"게임 종료");
      $("#resultRetry").onclick=()=>requestRematch("ox");$("#resultExit").onclick=()=>{hideResult();leave()};
@@ -640,14 +637,14 @@ function oxAIMove(){
 
 $("#oxReset").onclick=()=>{
  const winsKeep={...ox.roundWins}, mark=ox.me;
- ox={board:Array(9).fill(""),turn:"X",me:mark,roundWins:winsKeep,over:false};
+ ox={board:Array(9).fill(""),turn:ox.nextStarter||"X",me:mark,roundWins:winsKeep,over:false,nextStarter:null};
  oxSelected=null;
  $("#oxReset").classList.add("hidden");
  renderOX();
  if(mode==="online"){
    roomRef.child("state").transaction(st=>{
      if(!st||st.type!=="ox")return;
-     return {type:"ox",board:Array(9).fill(""),turn:"X",roundWins:st.roundWins||{X:0,O:0},over:false};
+     return {type:"ox",board:Array(9).fill(""),turn:st.nextStarter||"X",roundWins:st.roundWins||{X:0,O:0},over:false,nextStarter:null};
    });
  }else if(ox.me==="O")setTimeout(oxAIMove,350);
 };
@@ -675,14 +672,14 @@ function renderOX(){
 async function setupOXOnline(){
  const ps=(await roomRef.child("players").once("value")).val()||{};
  const ids=Object.keys(ps);
- const myMark=ids[0]===uid?"X":"O";
+ const myMark=ids[0]===playerId?"X":"O";
  ox.me=myMark;
 
  const stateRef=roomRef.child("state");
  if(isHost){
    const current=(await stateRef.once("value")).val();
    if(!current||current.type!=="ox"){
-     await stateRef.set({type:"ox",board:Array(9).fill(""),turn:"X",roundWins:{X:0,O:0},over:false});
+     await stateRef.set({type:"ox",board:Array(9).fill(""),turn:Math.random()<.5?"X":"O",roundWins:{X:0,O:0},over:false,nextStarter:null});
    }
  }
 
@@ -697,15 +694,17 @@ async function setupOXOnline(){
      turn:st.turn==="O"?"O":"X",
      roundWins:st.roundWins||{X:0,O:0},
      over:!!st.over,
+     nextStarter:st.nextStarter||null,
      me:myMark
    };
    // 선택한 칸이 더 이상 내 말이 아니면 선택 해제
    if(oxSelected!==null&&ox.board[oxSelected]!==myMark)oxSelected=null;
    renderOX();
+   if(!st.over&&st.roundWins?.X===0&&st.roundWins?.O===0&&st.board.every(v=>!v))$("#oxStatus").textContent=(st.turn===myMark?"내가":"상대가")+" 먼저 시작합니다.";
    if(st.over){const rw=st.roundWins||{X:0,O:0};const winner=rw.X>=3?"X":rw.O>=3?"O":null;if(winner){const key=`ox_${room}_${st.finishedAt||rw.X+"_"+rw.O}`;if(sessionStorage.getItem(key)!=="1"){sessionStorage.setItem(key,"1");const mine=winner===myMark;recordGame("ox",mine?"win":"loss",0,"online");showResult(mine?"🏆 OX 승리":"OX 패배",`${rw[myMark]||0} : ${rw[myMark==="X"?"O":"X"]||0}`,"다시 대전하기","방에서 나가기");$("#resultRetry").onclick=()=>requestRematch("ox");$("#resultExit").onclick=()=>{hideResult();leave()}}}else{$("#oxReset").classList.remove("hidden");$("#oxStatus").textContent="이번 판 종료 · 다음 판을 시작하세요"}}
  };
  const rematchRef=roomRef.child("rematch");
- const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null});await stateRef.set({type:"ox",board:Array(9).fill(""),turn:"X",roundWins:{X:0,O:0},over:false});hideResult()};
+ const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null});await stateRef.set({type:"ox",board:Array(9).fill(""),turn:Math.random()<.5?"X":"O",roundWins:{X:0,O:0},over:false,nextStarter:null});hideResult()};
  rematchRef.on("value",rematchCb);
  stateRef.on("value",cb);
  unsub=()=>{stateRef.off("value",cb);rematchRef.off("value",rematchCb)};
@@ -728,8 +727,8 @@ let selectedTerrain=null,chosenTerrainId="low_hills",terrainWatchOff=null;
 function terrainById(id){return TERRAINS.find(t=>t.id===id)||TERRAINS[7]}
 function drawTerrainThumb(canvas,t){const c=canvas.getContext("2d");c.clearRect(0,0,220,78);c.fillStyle="#75c8ff";c.fillRect(0,0,220,78);c.beginPath();c.moveTo(0,t.fn(0)/6);for(let x=0;x<=220;x+=3)c.lineTo(x,t.fn(x*860/220)/6);c.lineTo(220,78);c.lineTo(0,78);c.closePath();c.fillStyle="#6f5439";c.fill()}
 function renderTerrainCards(){const g=$("#terrainGrid");g.innerHTML="";TERRAINS.forEach(t=>{const b=document.createElement("button");b.className="terrain-card"+(selectedTerrain===t.id?" selected":"");b.innerHTML=`<canvas class="terrain-thumb" width="220" height="78"></canvas><div class="terrain-name">${t.name}</div><div class="terrain-level">${t.level}</div>`;b.onclick=()=>{selectedTerrain=t.id;renderTerrainCards();$("#terrainConfirm").disabled=false};g.appendChild(b);drawTerrainThumb(b.querySelector("canvas"),t)})}
-async function startTerrainSelection(){screen("terrainSelect");selectedTerrain=null;$("#terrainConfirm").disabled=true;$("#terrainWait").classList.add("hidden");$("#terrainGuide").textContent=mode==="online"?"각자 지형을 선택하면 둘 중 하나가 무작위로 결정됩니다.":"플레이할 지형을 하나 선택하세요.";renderTerrainCards();if(mode==="online"){await roomRef.child("terrainChoices/"+uid).remove().catch(()=>{});const resultRef=roomRef.child("terrainResult"),choicesRef=roomRef.child("terrainChoices");const resultCb=snap=>{const id=snap.val();if(id){chosenTerrainId=id;if(terrainWatchOff)terrainWatchOff();$("#terrainWait").classList.remove("hidden");$("#terrainWait").textContent=`이번 경기 지형: ${terrainById(id).name}`;setTimeout(()=>startFortress(),900)}};const choicesCb=async snap=>{if(!isHost)return;const v=snap.val()||{};if(Object.keys(v).length<2)return;const picks=Object.values(v),result=picks[0]===picks[1]?picks[0]:picks[Math.floor(Math.random()*2)];await roomRef.update({terrainResult:result,terrainChoices:null})};resultRef.on("value",resultCb);choicesRef.on("value",choicesCb);terrainWatchOff=()=>{resultRef.off("value",resultCb);choicesRef.off("value",choicesCb)}}}
-$("#terrainConfirm").onclick=async()=>{if(!selectedTerrain)return;if(mode!=="online"){chosenTerrainId=selectedTerrain;startFortress();return}$("#terrainConfirm").disabled=true;$("#terrainWait").classList.remove("hidden");await roomRef.child("terrainChoices/"+uid).set(selectedTerrain)}
+async function startTerrainSelection(){screen("terrainSelect");selectedTerrain=null;$("#terrainConfirm").disabled=true;$("#terrainWait").classList.add("hidden");$("#terrainGuide").textContent=mode==="online"?"각자 지형을 선택하면 둘 중 하나가 무작위로 결정됩니다.":"플레이할 지형을 하나 선택하세요.";renderTerrainCards();if(mode==="online"){await roomRef.child("terrainChoices/"+playerId).remove().catch(()=>{});const resultRef=roomRef.child("terrainResult"),choicesRef=roomRef.child("terrainChoices");const resultCb=snap=>{const id=snap.val();if(id){chosenTerrainId=id;if(terrainWatchOff)terrainWatchOff();$("#terrainWait").classList.remove("hidden");$("#terrainWait").textContent=`이번 경기 지형: ${terrainById(id).name}`;setTimeout(()=>startFortress(),900)}};const choicesCb=async snap=>{if(!isHost)return;const v=snap.val()||{};if(Object.keys(v).length<2)return;const picks=Object.values(v),result=picks[0]===picks[1]?picks[0]:picks[Math.floor(Math.random()*2)];await roomRef.update({terrainResult:result,terrainChoices:null})};resultRef.on("value",resultCb);choicesRef.on("value",choicesCb);terrainWatchOff=()=>{resultRef.off("value",resultCb);choicesRef.off("value",choicesCb)}}}
+$("#terrainConfirm").onclick=async()=>{if(!selectedTerrain)return;if(mode!=="online"){chosenTerrainId=selectedTerrain;startFortress();return}$("#terrainConfirm").disabled=true;$("#terrainWait").classList.remove("hidden");await roomRef.child("terrainChoices/"+playerId).set(selectedTerrain)}
 
 /* FORTRESS - 탱크 방향 고정, 좌우 이동, 각도/파워 별도 조절 */
 const can=$("#fortCanvas"),ctx=can.getContext("2d");
@@ -742,7 +741,7 @@ function newFT(){
      {x:100,hp:100,angle:45,power:55},
      {x:760,hp:100,angle:45,power:55}
    ],
-   turn:0,wins:[0,0],over:false,
+   turn:Math.random()<.5?0:1,wins:[0,0],over:false,nextStarter:null,
    ai:{shots:0,hitAt:5+Math.floor(Math.random()*6)},craters:[],trajectoryUsed:[false,false],showTrajectory:false
  };
 }
@@ -751,7 +750,7 @@ function startFortress(){
  screen("fortress");
  ft=newFT();ft.terrainId=chosenTerrainId;
  if(mode==="online")setupFortOnline();
- renderFT();
+ else {renderFT();toast(`${ft.turn===0?"내가":"PC가"} 먼저 시작합니다.`);if(ft.turn===1)setTimeout(pcFT,800);} 
 }
 
 function drawFT(projectile=null){
@@ -899,6 +898,7 @@ function endShot(shooter,hit,impactX){
  if(dead>=0){
    const winner=1-dead;
    ft.wins[winner]++;
+   ft.nextStarter=dead;
    ft.over=true;
    $("#fortNext").classList.remove("hidden");
 
@@ -906,7 +906,7 @@ function endShot(shooter,hit,impactX){
      const me=myFTIndex();
      if(winner===me){
        recordGame("fortress","win");
-       if(mode==="online")finishOnline("fortress",uid);
+       if(mode==="online")finishOnline("fortress",playerId);
      }
      $("#fortStatus").textContent="최종 경기 종료 · 3승 달성";const mine=winner===myFTIndex();if(!mine)recordGame("fortress","loss");showResult(mine?"🏆 포트리스 승리":"포트리스 패배",`${ft.wins[myFTIndex()]} : ${ft.wins[1-myFTIndex()]}`,"다시 대전하기",mode==="online"?"방에서 나가기":"게임 종료");$("#resultRetry").onclick=()=>requestRematch("fortress");$("#resultExit").onclick=()=>{hideResult();leave()};
    }else{
@@ -974,8 +974,8 @@ function pcFT(){
 
 $("#fortNext").onclick=()=>{
  const keepWins=[...ft.wins];
- const keepMe=ft.me;
- ft=newFT();ft.terrainId=chosenTerrainId;
+ const keepMe=ft.me, nextStarter=ft.nextStarter;
+ ft=newFT();ft.terrainId=chosenTerrainId;ft.turn=nextStarter??ft.turn;
  ft.wins=keepWins;
  if(mode==="online")ft.me=keepMe;
  $("#fortNext").classList.add("hidden");
@@ -985,7 +985,7 @@ $("#fortNext").onclick=()=>{
 
 async function setupFortOnline(){
  const ps=(await roomRef.child("players").once("value")).val()||{};
- const ids=Object.keys(ps), me=ids.indexOf(uid);
+ const ids=Object.keys(ps), me=ids.indexOf(playerId);
  if(isHost){
    ft.me=0;ft.terrainId=chosenTerrainId;
    await roomRef.child("state").set(ft);
@@ -998,6 +998,7 @@ async function setupFortOnline(){
    st.me=me;chosenTerrainId=st.terrainId||chosenTerrainId;
    ft=st;
    renderFT();
+   if((st.wins?.[0]||0)==0&&(st.wins?.[1]||0)==0&&st.tanks?.every(t=>t.hp===100))$("#fortStatus").textContent=(st.turn===me?"내가":"상대가")+" 먼저 시작합니다.";
  };
  const rematchRef=roomRef.child("rematch");
  const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null,state:null,terrainResult:null,terrainChoices:null});hideResult();startTerrainSelection()};
@@ -1011,11 +1012,12 @@ document.addEventListener("gesturestart",e=>e.preventDefault());
 
 /* Hall */
 async function finishOnline(kind,winner){
- if(winner!==uid)return;
+ if(winner!==playerId)return;
  
  let ref=db.ref("hall/"+uid);await ref.transaction(v=>({nick:nickname,total:(v?.total||0)+1,updated:Date.now()}));
  toast("우승 기록이 저장되었습니다.");
 }
+window.addEventListener("pagehide",()=>{stopHeartbeat()});
 const qp=new URLSearchParams(location.search),qg=qp.get("game"),qr=qp.get("room");
 if(qg&&qr){game=qg;openLobby(game);$("#roomInput").value=qr;setTimeout(()=>$("#joinRoom").click(),300)}
 if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
