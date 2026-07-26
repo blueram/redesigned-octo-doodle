@@ -488,14 +488,29 @@ function renderChoScores(){
 
 /* OX - 각자 3개 배치 후 자기 말을 빈칸으로 이동 */
 let ox={type:"ox",board:Array(9).fill(""),turn:"X",me:"X",roundWins:{X:0,O:0},over:false},oxSelected=null,oxSubmitting=false;
+let oxSurvivalTimer=null,oxSurvivalStarted=0,oxSurvivalTurns=0,oxSurvivalEnded=false;
 const wins=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
 
 function startOX(){
  screen("ox");
- ox={type:"ox",board:Array(9).fill(""),turn:Math.random()<.5?"X":"O",me:"X",roundWins:{X:0,O:0},over:false,nextStarter:null};
+ clearInterval(oxSurvivalTimer);oxSurvivalTimer=null;oxSurvivalEnded=false;oxSurvivalTurns=0;
+ const solo=mode==="solo";
+ ox={type:"ox",board:Array(9).fill(""),turn:solo?"O":(Math.random()<.5?"X":"O"),me:"X",roundWins:{X:0,O:0},over:false,nextStarter:null};
  oxSelected=null;
  buildOX();
- if(mode==="online")setupOXOnline(); else {renderOX();toast(`${ox.turn===ox.me?"내가":"PC가"} 먼저 시작합니다.`);if(ox.turn==="O")setTimeout(oxAIMove,700);} 
+ $("#oxSurvival").classList.toggle("hidden",!solo);
+ $("#oxReset").classList.add("hidden");
+ if(solo){
+   $("#oxBest").textContent=Number(localStorage.ox_survival_best||0);
+   $("#oxTurns").textContent="0";$("#oxTimeLeft").textContent="20.0";
+   $("#oxRule").innerHTML='<b>혼자 생존 모드 · 최상 난이도</b><br>PC가 항상 먼저 시작합니다. 20초 동안 PC의 완벽 수를 피해 최대한 많은 턴을 버티세요.';
+   oxSurvivalStarted=performance.now();
+   oxSurvivalTimer=setInterval(updateOXSurvivalClock,100);
+   renderOX();toast("최상 난이도 PC가 먼저 시작합니다.");setTimeout(oxAIMove,500);
+ }else{
+   $("#oxRule").innerHTML='<b>OX 이동게임 규칙</b><br>각자 말을 3개씩 놓습니다. 3개를 모두 놓은 뒤에는 자기 말 하나를 선택해 빈칸으로 이동합니다. 가로·세로·대각선으로 먼저 3개를 잇는 사람이 승리합니다.';
+   setupOXOnline();
+ }
 }
 
 function buildOX(){
@@ -523,6 +538,7 @@ function oxCellClick(i){
    if(ox.board[i])return toast("빈칸을 선택해 주세요.");
    if(oxCount(mark)>=3)return toast("말은 3개까지만 놓을 수 있습니다.");
    ox.board[i]=mark;
+   if(mode==="solo")recordOXSurvivalTurn();
    finishOXTurn();
    return;
  }
@@ -542,6 +558,7 @@ function oxCellClick(i){
  oxSelected=null;
  ox.board[from]="";
  ox.board[i]=mark;
+ if(mode==="solo")recordOXSurvivalTurn();
  finishOXTurn();
 }
 
@@ -623,6 +640,11 @@ function finishOXTurn(){
    ox.nextStarter=winner==="X"?"O":"X";
    renderOX();
 
+   if(mode==="solo"){
+     endOXSurvival(winner==="O"?"PC가 완성했습니다":"내가 완성했습니다");
+     return;
+   }
+
    if(ox.roundWins[winner]>=3){
      const myWin=winner===ox.me;
      recordGame("ox",myWin?"win":"loss");
@@ -672,30 +694,76 @@ function testMovement(mark){
  return null;
 }
 
-function oxAIMove(){
- if(ox.over||ox.turn!=="O")return;
-
- if(oxPhase("O")==="place"){
-   let i=testPlacement("O");
-   if(i===null)i=testPlacement("X");
-   if(i===null){
-     const choices=[4,0,2,6,8,1,3,5,7].filter(x=>!ox.board[x]);
-     i=choices[Math.floor(Math.random()*Math.min(choices.length,3))];
-   }
-   ox.board[i]="O";
- }else{
-   let move=testMovement("O");
-   if(!move){const choices=allOXMoves("O");move=choices[Math.floor(Math.random()*choices.length)]}
-   if(!move){
-     const choices=allOXMoves("O");
-     move=choices[Math.floor(Math.random()*choices.length)];
-   }
-   if(move){
-     ox.board[move.from]="";
-     ox.board[move.to]="O";
-   }
+function oxStateWinner(board){
+ for(const l of wins)if(board[l[0]]&&board[l[0]]===board[l[1]]&&board[l[1]]===board[l[2]])return board[l[0]];
+ return null;
+}
+function oxLegalMovesFor(board,mark){
+ const count=board.filter(v=>v===mark).length, empty=board.map((v,i)=>v?null:i).filter(v=>v!==null);
+ if(count<3)return empty.map(to=>({from:null,to}));
+ const own=board.map((v,i)=>v===mark?i:null).filter(v=>v!==null), out=[];
+ own.forEach(from=>empty.forEach(to=>out.push({from,to})));
+ return out;
+}
+function oxApplyMove(board,mark,m){const b=board.slice();if(m.from!==null)b[m.from]="";b[m.to]=mark;return b}
+function oxBoardScore(board){
+ const w=oxStateWinner(board);if(w==="O")return 10000;if(w==="X")return -10000;
+ let score=0;
+ for(const l of wins){
+   const vals=l.map(i=>board[i]),o=vals.filter(v=>v==="O").length,x=vals.filter(v=>v==="X").length;
+   if(!x)score+=o===2?60:o===1?8:1;
+   if(!o)score-=x===2?75:x===1?9:1;
  }
+ if(board[4]==="O")score+=10;if(board[4]==="X")score-=10;
+ return score;
+}
+function oxMinimax(board,turn,depth,alpha,beta,seen){
+ const w=oxStateWinner(board);if(w||depth<=0)return oxBoardScore(board)+(w==="O"?depth:w==="X"?-depth:0);
+ const key=board.join(".")+turn+depth;if(seen.has(key))return oxBoardScore(board);seen.add(key);
+ const moves=oxLegalMovesFor(board,turn);
+ if(turn==="O"){
+   let best=-Infinity;
+   for(const m of moves){best=Math.max(best,oxMinimax(oxApplyMove(board,"O",m),"X",depth-1,alpha,beta,new Set(seen)));alpha=Math.max(alpha,best);if(beta<=alpha)break;}
+   return best;
+ }
+ let best=Infinity;
+ for(const m of moves){best=Math.min(best,oxMinimax(oxApplyMove(board,"X",m),"O",depth-1,alpha,beta,new Set(seen)));beta=Math.min(beta,best);if(beta<=alpha)break;}
+ return best;
+}
+function oxBestHardMove(){
+ const moves=oxLegalMovesFor(ox.board,"O");let bestMove=moves[0],best=-Infinity;
+ for(const m of moves){
+   const b=oxApplyMove(ox.board,"O",m), immediate=oxStateWinner(b)==="O";
+   const value=immediate?99999:oxMinimax(b,"X",9,-Infinity,Infinity,new Set());
+   if(value>best){best=value;bestMove=m;}
+ }
+ return bestMove;
+}
+function oxAIMove(){
+ if(ox.over||ox.turn!=="O"||oxSurvivalEnded)return;
+ const move=oxBestHardMove();
+ if(move){if(move.from!==null)ox.board[move.from]="";ox.board[move.to]="O";}
  finishOXTurn();
+}
+function recordOXSurvivalTurn(){
+ if(oxSurvivalEnded)return;
+ oxSurvivalTurns++;$("#oxTurns").textContent=oxSurvivalTurns;
+}
+function updateOXSurvivalClock(){
+ if(mode!=="solo"||oxSurvivalEnded)return;
+ const remain=Math.max(0,20-(performance.now()-oxSurvivalStarted)/1000);
+ $("#oxTimeLeft").textContent=remain.toFixed(1);
+ if(remain<=0)endOXSurvival("20초 생존 성공");
+}
+function endOXSurvival(reason){
+ if(oxSurvivalEnded)return;oxSurvivalEnded=true;ox.over=true;clearInterval(oxSurvivalTimer);oxSurvivalTimer=null;
+ const old=Number(localStorage.ox_survival_best||0),isBest=oxSurvivalTurns>old;
+ if(isBest)localStorage.ox_survival_best=String(oxSurvivalTurns);
+ $("#oxBest").textContent=Math.max(old,oxSurvivalTurns);
+ recordGame("ox",reason.includes("성공")?"win":"loss");
+ $("#oxStatus").textContent=`${reason} · ${oxSurvivalTurns}턴`;
+ showResult(isBest?"🏆 최고 기록!":"🤖 생존 종료",`${reason}\n생존 ${oxSurvivalTurns}턴 · 최고 ${Math.max(old,oxSurvivalTurns)}턴`,"다시 도전","게임 종료");
+ $("#resultRetry").onclick=()=>{hideResult();startOX()};$("#resultExit").onclick=()=>{hideResult();leave()};
 }
 
 $("#oxReset").onclick=()=>{
@@ -728,8 +796,11 @@ function renderOX(){
 
  const other=ox.me==="X"?"O":"X";
  $("#oxPlayers").innerHTML=
+ mode==="solo"?
+ `<div class="player me"><b>${esc(nickname)} (${ox.me})</b><div class="score">생존 ${oxSurvivalTurns}턴 · 말 ${oxCount(ox.me)}개</div></div>
+ <div class="player"><b>최상 난이도 PC (${other})</b><div class="score">완벽 수 탐색 · 말 ${oxCount(other)}개</div></div>`:
  `<div class="player me"><b>${esc(nickname)} (${ox.me})</b><div class="score">${ox.roundWins[ox.me]||0}승 · 말 ${oxCount(ox.me)}개</div></div>
- <div class="player"><b>${mode==="solo"?"PC":"상대"} (${other})</b><div class="score">${ox.roundWins[other]||0}승 · 말 ${oxCount(other)}개</div></div>`;
+ <div class="player"><b>상대 (${other})</b><div class="score">${ox.roundWins[other]||0}승 · 말 ${oxCount(other)}개</div></div>`;
 }
 
 async function setupOXOnline(){
