@@ -50,24 +50,39 @@ function activePlayers(players){const now=Date.now();return Object.fromEntries(O
 async function leave(){hideResult();stopHeartbeat();if(roomRef){await roomRef.child("players/"+playerId).remove().catch(()=>{});roomRef=null}if(unsub)unsub();unsub=null;room="";game="";screen("home");hall()}
 function beginHeartbeat(){stopHeartbeat();const ping=()=>roomRef&&roomRef.child("players/"+playerId).update({connected:true,lastSeen:firebase.database.ServerValue.TIMESTAMP}).catch(()=>{});ping();heartbeatTimer=setInterval(ping,10000)}
 async function registerPlayer(asHost=false){
- const player={nick:nickname,userId:uid,deviceId,sessionId:playerId,score:0,ready:asHost,connected:true,lastSeen:firebase.database.ServerValue.TIMESTAMP,joinedAt:firebase.database.ServerValue.TIMESTAMP};
- const result=await roomRef.transaction(r=>{
-   if(!r)return asHost?{game,status:"waiting",host:playerId,created:Date.now(),players:{[playerId]:player}}:undefined;
-   if(r.game!==game)return;
-   r.players=r.players||{};
-   const live=activePlayers(r.players);
-   Object.keys(r.players).forEach(id=>{if(!live[id]&&id!==playerId)delete r.players[id]});
-   if(!r.players[playerId]&&Object.keys(activePlayers(r.players)).length>=maxPlayersForGame(r.game))return;
-   r.players[playerId]=player;
-   if(!r.host||!r.players[r.host])r.host=playerId;
-   return r;
- });
- if(!result.committed)throw new Error("FULL_OR_INVALID");
- roomRef.child("players/"+playerId).onDisconnect().remove();beginHeartbeat();
+ const now=Date.now();
+ const player={nick:nickname,userId:uid,deviceId,sessionId:playerId,score:0,ready:asHost,connected:true,lastSeen:now,joinedAt:now};
+ if(asHost){
+   const created=await roomRef.transaction(r=>{
+     if(r)return;
+     return {game,status:"waiting",host:playerId,maxPlayers:maxPlayersForGame(game),created:now,players:{[playerId]:player}};
+   });
+   if(!created.committed){const e=new Error("ROOM_CREATE_FAILED");e.code="ROOM_CREATE_FAILED";throw e}
+ }else{
+   const meta=(await roomRef.once("value")).val();
+   if(!meta){const e=new Error("ROOM_NOT_FOUND");e.code="ROOM_NOT_FOUND";throw e}
+   if(meta.game!==game){const e=new Error("WRONG_GAME");e.code="WRONG_GAME";throw e}
+   const max=maxPlayersForGame(meta.game);
+   const playersRef=roomRef.child("players");
+   const joined=await playersRef.transaction(players=>{
+     players=players||{};
+     const live=activePlayers(players);
+     Object.keys(players).forEach(id=>{if(!live[id]&&id!==playerId)delete players[id]});
+     if(!players[playerId]&&Object.keys(activePlayers(players)).length>=max)return;
+     players[playerId]=player;
+     return players;
+   },undefined,false);
+   if(!joined.committed){const e=new Error("ROOM_FULL");e.code="ROOM_FULL";throw e}
+   await roomRef.update({maxPlayers:max}).catch(()=>{});
+   const hostSnap=await roomRef.child("host").once("value");
+   if(!hostSnap.val())await roomRef.child("host").set(playerId);
+ }
+ roomRef.child("players/"+playerId).onDisconnect().remove();
+ beginHeartbeat();
 }
 $("#soloPlay").onclick=()=>startGame("solo");
 $("#createRoom").onclick=async()=>{if(!db)return toast("Firebase 연결에 실패했습니다.");room=Math.random().toString(36).slice(2,8).toUpperCase();isHost=true;mode="online";roomRef=db.ref("rooms/"+room);try{await registerPlayer(true);showRoom();watchRoom()}catch{toast("방을 만들지 못했습니다.")}};
-$("#joinRoom").onclick=async()=>{if(!db)return toast("Firebase 연결에 실패했습니다.");room=$("#roomInput").value.trim().toUpperCase();if(room.length<4)return toast("방 코드를 확인해 주세요.");roomRef=db.ref("rooms/"+room);const snap=await roomRef.once("value"),v=snap.val();if(!v)return toast("방을 찾을 수 없습니다.");if(v.game!==game)return toast("다른 게임의 방입니다.");mode="online";try{await registerPlayer(false)}catch{return toast(`현재 방은 최대 ${maxPlayersForGame()}명까지 접속할 수 있습니다.`)}const fresh=(await roomRef.once("value")).val()||{};isHost=fresh.host===playerId;showRoom();watchRoom()};
+$("#joinRoom").onclick=async()=>{if(!db)return toast("Firebase 연결에 실패했습니다.");room=$("#roomInput").value.trim().toUpperCase();if(room.length<4)return toast("방 코드를 확인해 주세요.");roomRef=db.ref("rooms/"+room);const snap=await roomRef.once("value"),v=snap.val();if(!v)return toast("방을 찾을 수 없습니다.");if(v.game!==game)return toast("다른 게임의 방입니다.");mode="online";try{await registerPlayer(false)}catch(e){console.warn("방 입장 실패",e);if(e?.code==="ROOM_FULL")return toast(`현재 방은 최대 ${maxPlayersForGame(v.game)}명까지 접속할 수 있습니다.`);if(e?.code==="ROOM_NOT_FOUND")return toast("방이 종료되었거나 존재하지 않습니다.");if(e?.code==="WRONG_GAME")return toast("다른 게임의 방입니다.");return toast("방 접속에 실패했습니다. 인터넷 연결 후 다시 시도해 주세요.")}const fresh=(await roomRef.once("value")).val()||{};isHost=fresh.host===playerId;showRoom();watchRoom()};
 function showRoom(){$("#roomPanel").classList.remove("hidden");$("#roomCode").textContent=room}
 function watchRoom(){const cb=s=>{const v=s.val();if(!v)return;const ps=activePlayers(v.players||{});renderRoomPlayers(ps);isHost=v.host===playerId;const count=Object.keys(ps).length,max=maxPlayersForGame(v.game);const allReady=Object.entries(ps).every(([id,p])=>id===v.host||p.ready);$("#roomCapacity").textContent=`참가자 ${count} / ${max}명`;$("#readyOnline").classList.toggle("hidden",isHost||v.game!=="chosung");$("#readyOnline").textContent=ps[playerId]?.ready?"준비 취소":"준비하기";$("#startOnline").disabled=!isHost||count<2||(v.game==="chosung"&&!allReady);$("#roomGuide").textContent=v.game==="chosung"?(count<2?"2명 이상 입장하면 시작할 수 있습니다.":(!allReady?"참가자 전원이 준비되면 방장이 시작할 수 있습니다.":"준비 완료! 방장이 게임을 시작할 수 있습니다.")):"방장만 시작할 수 있으며, 상대가 없으면 시작되지 않습니다.";if(v.status==="playing")startGame("online",v)};roomRef.on("value",cb);unsub=()=>roomRef.off("value",cb)}
 function renderRoomPlayers(ps){$("#roomPlayers").innerHTML=Object.entries(ps).map(([id,p])=>`<div class="player ${id===playerId?"me":""}"><b>${esc(p.nick)}</b><div class="ready-dot ${p.ready?"ready-ok":"ready-wait"}">${id===playerId?"나 · ":""}${p.ready?"준비 완료":"준비 중"}</div></div>`).join("")}
