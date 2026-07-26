@@ -334,6 +334,27 @@ function submitCho(){
  }
 }
 $("#choSubmit").onclick=submitCho;$("#choAnswer").onkeydown=e=>{if(e.key==="Enter")submitCho()};
+const choInput=$("#choAnswer");
+function setChoKeyboardMode(on){
+ document.body.classList.toggle("cho-keyboard",!!on);
+ if(on){
+  setTimeout(()=>{
+   const target=$("#chosung");
+   const top=Math.max(0,target.offsetTop-4);
+   window.scrollTo({top,behavior:"smooth"});
+  },120);
+ }
+}
+choInput.addEventListener("focus",()=>setChoKeyboardMode(true));
+choInput.addEventListener("blur",()=>setTimeout(()=>setChoKeyboardMode(false),120));
+if(window.visualViewport){
+ let baseHeight=window.visualViewport.height;
+ window.visualViewport.addEventListener("resize",()=>{
+  const keyboardOpen=baseHeight-window.visualViewport.height>120&&document.activeElement===choInput;
+  setChoKeyboardMode(keyboardOpen);
+  if(window.visualViewport.height>baseHeight)baseHeight=window.visualViewport.height;
+ });
+}
 function finishChoSolo(){clearInterval(choTimer);clearChoHintTimers();let t=(performance.now()-choStart)/1000;$("#choProgress").style.width="100%";$("#choQ").textContent="완료!";$("#choHint").textContent=`10문제 ${t.toFixed(1)}초`;if(!stats.chosungBest||t<stats.chosungBest)stats.chosungBest=t;recordGame("chosung","win",t);showResult("🎉 10문제 완료",`기록 <b>${t.toFixed(1)}초</b>`);$("#resultRetry").onclick=()=>{hideResult();startChosung()};$("#resultExit").onclick=()=>{hideResult();leave()}}
 async function setupChoOnline(){
  const stateRef=roomRef.child("state");
