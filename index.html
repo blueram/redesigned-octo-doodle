@@ -42,6 +42,7 @@
     .result-modal{position:fixed;inset:0;background:rgba(2,6,23,.78);display:grid;place-items:center;z-index:200;padding:18px}.result-box{width:min(430px,100%);background:#172033;border:1px solid #475569;border-radius:24px;padding:24px;text-align:center}.result-title{font-size:28px;font-weight:950}.result-detail{font-size:18px;line-height:1.7;margin:16px 0}.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#020617;color:#fff;padding:11px 16px;border-radius:999px;z-index:99;opacity:0;transition:.2s;pointer-events:none}.toast.show{opacity:1}
     .cho-layout{display:flex;flex-direction:column;gap:10px}.cho-topline{display:grid;grid-template-columns:1fr auto auto;gap:7px;align-items:center}.cho-question{padding:18px 12px 14px;background:#0f172a;border:1px solid #334155;border-radius:18px;text-align:center}.cho-category{display:inline-flex;margin-bottom:8px}.cho-winner{display:none;border:1px solid #f59e0b;background:rgba(245,158,11,.12);border-radius:13px;padding:9px 11px;text-align:center;font-weight:900}.cho-winner.show{display:block}.cho-rank-wrap{border:1px solid #334155;background:#0b1220;border-radius:14px;padding:8px 9px}.cho-rank-title{font-size:12px;color:#94a3b8;margin-bottom:6px}.cho-rank-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.cho-rank-item{min-width:0;border-radius:10px;background:#172033;padding:7px 5px;text-align:center;font-size:12px}.cho-rank-item.me{outline:2px solid #facc15;background:#3a3210}.cho-rank-item b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cho-rank-item .pts{font-weight:950;font-size:14px}.cho-input-row{display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:8px;position:relative;z-index:2}.cho-input-row input{min-width:0}.room-status{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px}.ready-dot{font-size:12px;font-weight:800}.ready-ok{color:#4ade80}.ready-wait{color:#94a3b8}
     @media(max-width:650px){.terrain-grid{grid-template-columns:repeat(2,1fr)}.games{grid-template-columns:1fr}.game-card{min-height:105px}.players{grid-template-columns:1fr}.chosung{font-size:46px}.wrap{padding:11px}.card{padding:15px}.tank-controls{grid-template-columns:repeat(2,1fr)}
+      #chosung{padding-top:22px}
       #chosung .cho-layout{gap:8px;padding:12px}
       #chosung .cho-question{padding:12px 10px 10px}
       #chosung .cho-hint{font-size:18px;min-height:48px;margin-top:8px}
@@ -51,6 +52,7 @@
       #chosung .cho-input-row input{padding:12px 10px}
       body.cho-keyboard .top{display:none}
       body.cho-keyboard .wrap{padding:6px 8px}
+      body.cho-keyboard #chosung{padding-top:32px}
       body.cho-keyboard #chosung .cho-layout{gap:5px;padding:8px}
       body.cho-keyboard #chosung .cho-topline{display:none}
       body.cho-keyboard #chosung .progress{display:none}
@@ -74,7 +76,7 @@
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="logo">🎮 Mini<span>Game</span> <small id="titleVersion" style="font-size:14px;color:#7dd3fc;vertical-align:middle">V4.1.2</small></div>
+    <div class="logo">🎮 Mini<span>Game</span> <small id="titleVersion" style="font-size:14px;color:#7dd3fc;vertical-align:middle">V4.1.3</small></div>
     <button id="homeBtn" class="hidden">🏠 홈</button>
   </div>
 

@@ -340,7 +340,7 @@ function setChoKeyboardMode(on){
  if(on){
   setTimeout(()=>{
    const target=$("#chosung");
-   const top=Math.max(0,target.offsetTop-4);
+   const top=Math.max(0,target.offsetTop-48);
    window.scrollTo({top,behavior:"smooth"});
   },120);
  }
