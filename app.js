@@ -37,14 +37,33 @@ async function requestRematch(kind){if(mode!=="online"){hideResult();return kind
 $("#resetStats").onclick=async()=>{if(!confirm("내 모든 전적을 삭제하시겠습니까? 복구할 수 없습니다."))return;stats={chosungBest:null,games:{}};ensureStats();saveStats();if(db)await db.ref(`playerStats/${uid}`).remove().catch(()=>{});toast("내 전적을 초기화했습니다.")};
 
 async function hall(){if(!db)return;const snap=await db.ref("hall").once("value"),v=snap.val()||{};const rows=[];Object.entries(v).forEach(([id,r])=>rows.push(r));rows.sort((a,b)=>(b.total||0)-(a.total||0));$("#hall").innerHTML=rows.slice(0,10).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.nick||"익명")}</td><td>${r.total||0}승</td></tr>`).join("")||'<tr><td colspan="3" class="muted">아직 기록이 없습니다.</td></tr>'}
+async function loadOXSurvivalRank(){
+ if(!db)return;
+ try{
+  const snap=await db.ref("oxSurvivalRank").once("value"),v=snap.val()||{};
+  const rows=Object.values(v).filter(Boolean).sort((a,b)=>(b.turns||0)-(a.turns||0)||((b.survivedMs||0)-(a.survivedMs||0))).slice(0,10);
+  const html=rows.length?rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.nick||"익명")}</td><td><b>${r.turns||0}턴</b></td><td>${Math.round((r.survivedMs||0)/1000)}초</td></tr>`).join(""):'<tr><td colspan="4" class="muted">아직 생존 기록이 없습니다.</td></tr>';
+  const home=$("#oxServerRank"),lobby=$("#lobbyOxServerRank");if(home)home.innerHTML=html;if(lobby)lobby.innerHTML=html;
+ }catch(e){console.warn("생존 랭킹 불러오기 실패",e)}
+}
+async function saveOXSurvivalRank(turns,survivedMs){
+ if(!db)return;
+ const ref=db.ref(`oxSurvivalRank/${uid}`);
+ await ref.transaction(old=>{
+  if(old&&(old.turns||0)>turns)return old;
+  if(old&&(old.turns||0)===turns&&(old.survivedMs||0)>=survivedMs)return old;
+  return {nick:nickname,turns,survivedMs,updatedAt:firebase.database.ServerValue.TIMESTAMP};
+ }).catch(e=>console.warn("생존 기록 저장 실패",e));
+ await loadOXSurvivalRank();
+}
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
-$("#nickname").value=nickname; renderStats(); hall();
+$("#nickname").value=nickname; renderStats(); hall(); loadOXSurvivalRank();
 $("#saveNick").onclick=()=>{nickname=$("#nickname").value.trim()||nickname;localStorage.mg_nick=nickname;toast("닉네임을 저장했습니다.")};
 $$('[data-game]').forEach(b=>b.onclick=()=>openLobby(b.dataset.game));
 $("#homeBtn").onclick=leave;
 function gameName(g){return g==="chosung"?"초성게임":g==="ox"?"OX 이동게임":"포트리스"}
 function maxPlayersForGame(g=game){return g==="chosung"?4:2}
-function openLobby(g){game=g;$("#lobbyTitle").textContent=gameName(g)+" 대기실";$("#roomPanel").classList.add("hidden");$("#roomGuide").textContent=g==="chosung"?"초성퀴즈는 최대 4명이며, 2명 이상이면 방장이 시작할 수 있습니다.":"방장만 시작할 수 있으며, 상대가 없으면 시작되지 않습니다.";screen("lobby")}
+function openLobby(g){game=g;$("#lobbyTitle").textContent=gameName(g)+" 대기실";$("#roomPanel").classList.add("hidden");loadOXSurvivalRank();$("#roomGuide").textContent=g==="chosung"?"초성퀴즈는 최대 4명이며, 2명 이상이면 방장이 시작할 수 있습니다.":"방장만 시작할 수 있으며, 상대가 없으면 시작되지 않습니다.";screen("lobby")}
 function stopHeartbeat(){clearInterval(heartbeatTimer);heartbeatTimer=null}
 function activePlayers(players){const now=Date.now();return Object.fromEntries(Object.entries(players||{}).filter(([,p])=>p&&p.connected!==false&&now-(p.lastSeen||now)<35000))}
 async function leave(){hideResult();stopHeartbeat();if(roomRef){await roomRef.child("players/"+playerId).remove().catch(()=>{});roomRef=null}if(unsub)unsub();unsub=null;room="";game="";screen("home");hall()}
@@ -502,8 +521,8 @@ function startOX(){
  $("#oxReset").classList.add("hidden");
  if(solo){
    $("#oxBest").textContent=Number(localStorage.ox_survival_best||0);
-   $("#oxTurns").textContent="0";$("#oxTimeLeft").textContent="20.0";
-   $("#oxRule").innerHTML='<b>혼자 생존 모드 · 최상 난이도</b><br>PC가 항상 먼저 시작합니다. 20초 동안 PC의 완벽 수를 피해 최대한 많은 턴을 버티세요.';
+   $("#oxTurns").textContent="0";$("#oxTimeLeft").textContent="01:30";
+   $("#oxRule").innerHTML='<b>혼자 생존 모드 · 최상 난이도</b><br>PC가 항상 먼저 시작합니다. 1분 30초 동안 PC의 완벽 수를 피해 최대한 많은 턴을 버티세요.';
    oxSurvivalStarted=performance.now();
    oxSurvivalTimer=setInterval(updateOXSurvivalClock,100);
    renderOX();toast("최상 난이도 PC가 먼저 시작합니다.");setTimeout(oxAIMove,500);
@@ -751,15 +770,17 @@ function recordOXSurvivalTurn(){
 }
 function updateOXSurvivalClock(){
  if(mode!=="solo"||oxSurvivalEnded)return;
- const remain=Math.max(0,20-(performance.now()-oxSurvivalStarted)/1000);
- $("#oxTimeLeft").textContent=remain.toFixed(1);
- if(remain<=0)endOXSurvival("20초 생존 성공");
+ const remain=Math.max(0,90-(performance.now()-oxSurvivalStarted)/1000);
+ const mm=Math.floor(remain/60),ss=Math.ceil(remain%60);$("#oxTimeLeft").textContent=`${String(mm).padStart(2,"0")}:${String(ss).padStart(2,"0")}`;
+ if(remain<=0)endOXSurvival("1분 30초 생존 성공");
 }
-function endOXSurvival(reason){
+async function endOXSurvival(reason){
  if(oxSurvivalEnded)return;oxSurvivalEnded=true;ox.over=true;clearInterval(oxSurvivalTimer);oxSurvivalTimer=null;
  const old=Number(localStorage.ox_survival_best||0),isBest=oxSurvivalTurns>old;
  if(isBest)localStorage.ox_survival_best=String(oxSurvivalTurns);
  $("#oxBest").textContent=Math.max(old,oxSurvivalTurns);
+ const survivedMs=Math.min(90000,Math.max(0,Math.round(performance.now()-oxSurvivalStarted)));
+ await saveOXSurvivalRank(oxSurvivalTurns,survivedMs);
  recordGame("ox",reason.includes("성공")?"win":"loss");
  $("#oxStatus").textContent=`${reason} · ${oxSurvivalTurns}턴`;
  showResult(isBest?"🏆 최고 기록!":"🤖 생존 종료",`${reason}\n생존 ${oxSurvivalTurns}턴 · 최고 ${Math.max(old,oxSurvivalTurns)}턴`,"다시 도전","게임 종료");

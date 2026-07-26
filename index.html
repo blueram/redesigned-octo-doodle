@@ -75,7 +75,7 @@
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="logo">🎮 Mini<span>Game</span> <small id="titleVersion" style="font-size:14px;color:#7dd3fc;vertical-align:middle">V4.1.5</small></div>
+    <div class="logo">🎮 Mini<span>Game</span> <small id="titleVersion" style="font-size:14px;color:#7dd3fc;vertical-align:middle">V4.3.0</small></div>
     <button id="homeBtn" class="hidden">🏠 홈</button>
   </div>
 
@@ -89,8 +89,13 @@
     </div>
     <div class="games">
       <button class="card game-card" data-game="chosung"><span class="emoji">🔤</span><b>초성게임</b><span class="muted">온라인 10점 · 혼자 10문제 타임어택</span></button>
-      <button class="card game-card" data-game="ox"><span class="emoji">⭕</span><b>OX 이동게임</b><span class="muted">온라인 1:1 · 혼자 PC · 3선승</span></button>
-      <button class="card game-card" data-game="fortress"><span class="emoji">💥</span><b>포트리스</b><span class="muted">온라인 1:1 · 혼자 PC · 3선승</span></button>
+      <button class="card game-card" data-game="ox"><span class="emoji">⭕</span><b>OX 이동게임</b><span class="muted">온라인 1:1 · 혼자 최상 난이도 90초 생존</span></button>
+      <button class="card game-card" data-game="fortress"><span class="emoji">💥</span><b>포트리스</b><span class="muted">온라인 1:1 · 혼자 최상 난이도 90초 생존</span></button>
+    </div>
+    <div class="card">
+      <h3>🤖 OX 생존 서버 랭킹</h3>
+      <div class="muted" style="margin-bottom:8px">모든 사용자의 최고 생존 기록입니다.</div>
+      <table class="ranking"><thead><tr><th>순위</th><th>닉네임</th><th>턴</th><th>시간</th></tr></thead><tbody id="oxServerRank"></tbody></table>
     </div>
     <div class="card">
       <h3>🏆 내 기록</h3>
@@ -111,6 +116,11 @@
       </div>
       <div style="height:12px"></div>
       <div class="row"><input id="roomInput" maxlength="6" placeholder="방 코드 6자리"><button id="joinRoom">방 참가</button></div>
+    </div>
+    <div class="card">
+      <h3>🤖 OX 생존 서버 랭킹</h3>
+      <div class="muted" style="margin-bottom:8px">게임 시작 전에 현재 최고 기록을 확인하세요.</div>
+      <table class="ranking"><thead><tr><th>순위</th><th>닉네임</th><th>턴</th><th>시간</th></tr></thead><tbody id="lobbyOxServerRank"></tbody></table>
     </div>
     <div id="roomPanel" class="card hidden">
       <div class="muted">방 코드</div><div id="roomCode" class="roomcode">------</div>
@@ -144,7 +154,7 @@
   <section id="ox" class="screen">
     <div class="card">
       <div class="rulebox" id="oxRule"><b>OX 이동게임 규칙</b><br>각자 말을 3개씩 놓습니다. 3개를 모두 놓은 뒤에는 자기 말 하나를 선택해 빈칸으로 이동합니다. 가로·세로·대각선으로 먼저 3개를 잇는 사람이 승리합니다.</div>
-      <div id="oxSurvival" class="rulebox hidden" style="text-align:center;font-weight:900">⏱️ 남은 시간 <span id="oxTimeLeft">20.0</span>초 · 생존 <span id="oxTurns">0</span>턴 · 최고 <span id="oxBest">0</span>턴</div>
+      <div id="oxSurvival" class="rulebox hidden" style="text-align:center;font-weight:900">⏱️ 남은 시간 <span id="oxTimeLeft">01:30</span> · 생존 <span id="oxTurns">0</span>턴 · 최고 <span id="oxBest">0</span>턴</div>
       <div id="oxStatus" style="text-align:center;font-weight:900">내 차례</div>
       <div id="oxPlayers" class="players"></div>
       <div id="oxBoard" class="ox-board"></div>

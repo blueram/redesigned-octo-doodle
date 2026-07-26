@@ -6,6 +6,12 @@
         ".write": true
       }
     },
+    "oxSurvivalRank": {
+      ".read": true,
+      "$uid": {
+        ".write": true
+      }
+    },
     "hall": {
       ".read": true,
       "$uid": {

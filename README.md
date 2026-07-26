@@ -1,3 +1,10 @@
+# MiniGame V4.3.0
+
+- OX 혼자 모드: 최상 난이도, 1분 30초 생존
+- OX 생존 최고 기록을 Firebase 서버에 사용자별 1개 저장
+- 홈 화면과 모든 게임 대기실에 서버 상위 10위 표시
+- firebase-rules.json의 oxSurvivalRank 규칙 적용 필요
+
 # MiniGame V4.1.2
 
 ## 초성게임 모바일 입력 화면 개선
