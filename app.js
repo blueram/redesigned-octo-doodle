@@ -646,7 +646,7 @@ $("#oxReset").onclick=()=>{
      if(!st||st.type!=="ox")return;
      return {type:"ox",board:Array(9).fill(""),turn:st.nextStarter||"X",roundWins:st.roundWins||{X:0,O:0},over:false,nextStarter:null};
    });
- }else if(ox.me==="O")setTimeout(oxAIMove,350);
+ }else if(ox.turn==="O")setTimeout(oxAIMove,350);
 };
 
 function renderOX(){
@@ -742,7 +742,7 @@ function newFT(){
      {x:760,hp:100,angle:45,power:55}
    ],
    turn:Math.random()<.5?0:1,wins:[0,0],over:false,nextStarter:null,
-   ai:{shots:0,hitAt:5+Math.floor(Math.random()*6)},craters:[],trajectoryUsed:[false,false],showTrajectory:false
+   ai:{shots:0,hitAt:5+Math.floor(Math.random()*6),recentPositions:[],lastHit:null},craters:[],trajectoryUsed:[false,false],showTrajectory:false
  };
 }
 
@@ -892,7 +892,20 @@ function endShot(shooter,hit,impactX){
  anim=false;
  const target=1-shooter;
  if(Number.isFinite(impactX)&&impactX>=0&&impactX<=860)ft.craters.push({x:impactX,r:hit?34:26,depth:hit?18:14});
- if(hit)ft.tanks[target].hp=Math.max(0,ft.tanks[target].hp-35);
+ if(hit){
+   ft.tanks[target].hp=Math.max(0,ft.tanks[target].hp-35);
+   // PC가 사용자 포탄에 맞았을 때 직전 궤적과 피격 지점을 기억한다.
+   if(mode==="solo"&&shooter===0&&target===1){
+     ft.ai=ft.ai||{shots:0,hitAt:5+Math.floor(Math.random()*6),recentPositions:[],lastHit:null};
+     ft.ai.lastHit={
+       impactX:Number.isFinite(impactX)?impactX:ft.tanks[1].x,
+       shooterX:ft.tanks[0].x,
+       angle:ft.tanks[0].angle,
+       power:ft.tanks[0].power,
+       at:Date.now()
+     };
+   }
+ }
 
  const dead=ft.tanks.findIndex(t=>t.hp<=0);
  if(dead>=0){
@@ -922,7 +935,69 @@ function endShot(shooter,hit,impactX){
 }
 
 
-function animatePCMove(done){if(ft.over||ft.turn!==1)return done&&done();anim=true;const t=ft.tanks[1],stepSize=18,maxSteps=1+Math.floor(Math.random()*5);let dir=Math.random()<.5?-1:1;if(t.x>780)dir=-1;if(t.x<500)dir=1;let n=0;function frame(){if(n>=maxSteps){anim=false;syncFT();return done&&done()}const target=Math.max(465,Math.min(825,t.x+dir*stepSize));const start=t.x;let f=0;function roll(){f++;t.x=start+(target-start)*(f/8);drawFT();if(f<8)requestAnimationFrame(roll);else{n++;frame()}}roll()}frame()}
+function sampleShotPath(shooter,angle,power){
+ const t=ft.tanks[shooter],dir=shooter===0?1:-1;
+ let x=t.x,y=terrainY(t.x)-27;
+ let vx=dir*Math.cos(angle*Math.PI/180)*(power*.22);
+ let vy=-Math.sin(angle*Math.PI/180)*(power*.22);
+ const path=[];
+ for(let i=0;i<520;i++){
+   x+=vx;y+=vy;vy+=.16;
+   if(i%2===0)path.push({x,y});
+   if(x<0||x>860||y>terrainY(Math.max(0,Math.min(860,x))))break;
+ }
+ return path;
+}
+function terrainSlopeAt(x){return Math.abs(terrainY(Math.min(825,x+10))-terrainY(Math.max(465,x-10)));}
+function choosePCSafePosition(){
+ const t=ft.tanks[1];
+ ft.ai=ft.ai||{shots:0,hitAt:5+Math.floor(Math.random()*6),recentPositions:[],lastHit:null};
+ const hit=ft.ai.lastHit;
+ if(!hit)return Math.max(465,Math.min(825,t.x+(Math.random()<.5?-1:1)*(36+Math.floor(Math.random()*55))));
+ const path=sampleShotPath(0,hit.angle,hit.power);
+ const recent=ft.ai.recentPositions||[];
+ const candidates=[];
+ // 현재 위치에서 최대 약 126px 범위 안의 실제 이동 가능한 지점을 비교한다.
+ for(let d=-126;d<=126;d+=14){
+   const x=Math.max(465,Math.min(825,t.x+d));
+   if(Math.abs(x-t.x)<24)continue;
+   const slope=terrainSlopeAt(x);
+   if(slope>30)continue;
+   const y=terrainY(x)-18;
+   let minPath=999;
+   for(const p of path){const dist=Math.hypot(p.x-x,p.y-y);if(dist<minPath)minPath=dist;}
+   const impactGap=Math.abs(x-hit.impactX);
+   const repeatPenalty=recent.some(v=>Math.abs(v-x)<25)?90:0;
+   const edgePenalty=(x<485||x>805)?18:0;
+   const moveBonus=Math.min(28,Math.abs(x-t.x)*.18);
+   const score=minPath*1.8+impactGap*.55+moveBonus-slope*1.2-repeatPenalty-edgePenalty;
+   candidates.push({x,score});
+ }
+ if(!candidates.length)return Math.max(465,Math.min(825,t.x+(t.x>645?-70:70)));
+ candidates.sort((a,b)=>b.score-a.score);
+ return candidates[0].x;
+}
+function animatePCMove(done){
+ if(ft.over||ft.turn!==1)return done&&done();
+ anim=true;
+ const t=ft.tanks[1],start=t.x,target=choosePCSafePosition();
+ const distance=Math.abs(target-start),frames=Math.max(12,Math.ceil(distance/5));
+ let f=0;
+ function roll(){
+   f++;
+   const eased=1-Math.pow(1-f/frames,3);
+   t.x=start+(target-start)*eased;
+   drawFT();
+   if(f<frames)return requestAnimationFrame(roll);
+   t.x=target;
+   ft.ai.recentPositions=([...(ft.ai.recentPositions||[]),Math.round(target)]).slice(-3);
+   ft.ai.lastHit=null;
+   anim=false;
+   syncFT();
+   setTimeout(()=>done&&done(),280);
+ }
+ roll();
+}
 function simulateImpact(shooter,angle,power){
  const t=ft.tanks[shooter], dir=shooter===0?1:-1;
  let x=t.x,y=terrainY(t.x)-27;
