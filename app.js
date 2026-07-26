@@ -335,20 +335,46 @@ function getChoHints(word){
  return smartChoHint(word);
 }
 
-function startChoHints(word){
+function startChoHints(word,onTimeout){
  clearChoHintTimers();
  const hints=getChoHints(word);
  $("#choCategory").textContent=hints[0]||"일상 단어";
- let step=0;
+ let step=0,thirdHintShows=0,finished=false;
 
  const showHint=()=>{
-   const idx=step%3;
-   $("#choHint").innerHTML=`<b>${idx+1}단계 힌트</b><span>${esc(hints[idx])}</span>`;
+   if(finished)return;
+   const idx=Math.min(step,2);
+   if(idx===2)thirdHintShows++;
+   $("#choHint").innerHTML=`<b>${idx+1}단계 힌트${idx===2?` · ${thirdHintShows}/3`:""}</b><span>${esc(hints[idx])}</span>`;
    step++;
+   if(idx===2&&thirdHintShows>=3){
+     finished=true;
+     clearChoHintTimers();
+     if(typeof onTimeout==="function")onTimeout();
+   }
  };
 
  showHint();
  choHintInterval=setInterval(showHint,5000);
+}
+
+function timeoutChoSolo(){
+ if(mode!=="solo"||choIdx>=choList.length)return;
+ const answer=choList[choIdx];
+ $("#choAnswer").disabled=true;$("#choSubmit").disabled=true;
+ $("#choWinner").innerHTML=`⏰ 시간 초과! <span style="color:#facc15">정답: ${esc(answer)}</span>`;
+ $("#choWinner").classList.add("show");
+ clearTimeout(choAdvanceTimer);
+ choAdvanceTimer=setTimeout(()=>{choIdx++;nextCho();},2000);
+}
+
+async function timeoutChoOnline(round,answer){
+ if(mode!=="online"||!isHost||!roomRef)return;
+ const stateRef=roomRef.child("state");
+ await stateRef.transaction(st=>{
+   if(!st||st.type!=="chosung"||st.round!==round||st.answer!==answer||st.roundWinner||st.timedOut)return;
+   st.timedOut=true;st.timedOutAt=Date.now();return st;
+ }).catch(()=>{});
 }
 
 function startChosung(){
@@ -363,7 +389,7 @@ function nextCho(){
  $("#choRound").textContent=`${choIdx+1} / ${choList.length}`;
  $("#choProgress").style.width=(choIdx/choList.length*100)+"%";const soloScore=$("#choSoloScore");if(soloScore)soloScore.textContent=choIdx;
  $("#choAnswer").value="";$("#choAnswer").disabled=false;$("#choSubmit").disabled=false;$("#choWinner").classList.remove("show");
- startChoHints(w);
+ startChoHints(w,timeoutChoSolo);
  $("#choAnswer").focus();
 }
 function submitCho(){
@@ -382,7 +408,7 @@ function submitCho(){
    }
  }else if(roomRef){
    roomRef.child("state").transaction(st=>{
-     if(!st||st.type!=="chosung"||st.answer!==a||st.roundWinner)return;
+     if(!st||st.type!=="chosung"||st.answer!==a||st.roundWinner||st.timedOut)return;
      st.roundWinner=playerId;
      st.answeredAt=Date.now();
      st.scores=st.scores||{};
@@ -443,6 +469,8 @@ async function setupChoOnline(){
        round:1,
        scores:{},
        roundWinner:null,
+       timedOut:false,
+       timedOutAt:null,
        answeredAt:null,
        roundToken:Date.now(),
        startedAt:Date.now(),
@@ -469,19 +497,25 @@ async function setupChoOnline(){
      $("#choQ").textContent=toCho(st.word);
      $("#choRound").textContent=`${st.round||1} 라운드`;
      $("#choAnswer").value="";$("#choAnswer").disabled=false;$("#choSubmit").disabled=false;$("#choWinner").classList.remove("show");$("#choWinner").textContent="";
-     startChoHints(st.word);
+     startChoHints(st.word,()=>timeoutChoOnline(st.round,st.answer));
      $("#choAnswer").focus();
    }
 
-   if(st.roundWinner){
+   if(st.timedOut){
+     clearChoHintTimers();
+     $("#choAnswer").disabled=true;$("#choSubmit").disabled=true;
+     $("#choWinner").innerHTML=`⏰ 시간 초과! <span style="color:#facc15">정답: ${esc(st.answer)}</span>`;
+     $("#choWinner").classList.add("show");
+   }else if(st.roundWinner){
+     clearChoHintTimers();
      $("#choAnswer").disabled=true;$("#choSubmit").disabled=true;
      const showWinner=name=>{$("#choWinner").innerHTML=`👑 ${esc(name)}님 정답! <span style="color:#facc15">${esc(st.answer)}</span>`;$("#choWinner").classList.add("show")};
      const known=choPlayers[st.roundWinner]?.nick;
      if(known)showWinner(known);else roomRef.child("players/"+st.roundWinner+"/nick").once("value").then(x=>showWinner(x.val()||"참가자"));
    }
 
-   // 방장만 다음 문제로 이동하며, 같은 라운드에서 한 번만 예약
-   if(st.roundWinner&&isHost&&!choAdvancing){
+   // 방장만 정답 또는 시간 초과 후 다음 문제로 이동하며, 같은 라운드에서 한 번만 예약
+   if((st.roundWinner||st.timedOut)&&isHost&&!choAdvancing){
      choAdvancing=true;
      clearTimeout(choAdvanceTimer);
 
@@ -489,12 +523,12 @@ async function setupChoOnline(){
      choAdvanceTimer=setTimeout(async()=>{
        try{
          const latest=(await stateRef.once("value")).val();
-         if(!latest||latest.roundWinner!==st.roundWinner||latest.round!==st.round){
+         if(!latest||latest.round!==st.round||latest.roundWinner!==st.roundWinner||!!latest.timedOut!==!!st.timedOut){
            choAdvancing=false;
            return;
          }
 
-         if(winnerScore>=10){
+         if(!st.timedOut&&winnerScore>=10){
            await finishOnline("chosung",st.roundWinner); await roomRef.update({status:"finished",finishedAt:Date.now(),winner:st.roundWinner}); return;
          }
 
@@ -510,6 +544,8 @@ async function setupChoOnline(){
            round:(st.round||1)+1,
            scores:choScores,
            roundWinner:null,
+           timedOut:false,
+           timedOutAt:null,
            answeredAt:null,
            roundToken:Date.now(),
            questionQueue:queue,
@@ -523,7 +559,7 @@ async function setupChoOnline(){
  };
 
  const rematchRef=roomRef.child("rematch");
- const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;const queue=shuffleWords();const w=queue[0];await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null});await stateRef.set({type:"chosung",word:w,answer:w,round:1,scores:{},roundWinner:null,roundToken:Date.now(),startedAt:Date.now(),questionQueue:queue,questionIndex:0});hideResult()};
+ const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;const queue=shuffleWords();const w=queue[0];await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null});await stateRef.set({type:"chosung",word:w,answer:w,round:1,scores:{},roundWinner:null,timedOut:false,timedOutAt:null,roundToken:Date.now(),startedAt:Date.now(),questionQueue:queue,questionIndex:0});hideResult()};
  rematchRef.on("value",rematchCb);
  stateRef.on("value",cb);
  unsub=()=>{rematchRef.off("value",rematchCb);
