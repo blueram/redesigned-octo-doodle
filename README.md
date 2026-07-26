@@ -1,4 +1,4 @@
-# MiniGame V4.4.0
+# MiniGame V4.4.1
 
 - OX 혼자 모드: 최상 난이도, 1분 30초 생존
 - OX 생존 최고 기록을 Firebase 서버에 사용자별 1개 저장
