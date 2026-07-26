@@ -336,30 +336,25 @@ function submitCho(){
 $("#choSubmit").onclick=submitCho;$("#choAnswer").onkeydown=e=>{if(e.key==="Enter")submitCho()};
 const choInput=$("#choAnswer");
 function positionChoForKeyboard(){
- const card=$("#choCard"), hint=$("#choHint"), input=$("#choAnswer");
+ const card=$("#choCard"), input=$("#choAnswer");
  if(!card||!input)return;
- // 키보드가 열린 뒤 카드의 위쪽 여백을 남겨 힌트 단계 표시가 화면 밖으로 밀리지 않게 한다.
- const cardRect=card.getBoundingClientRect();
- const safeTop=12;
- if(cardRect.top<safeTop){
-  window.scrollBy({top:cardRect.top-safeTop,behavior:"smooth"});
- }
- setTimeout(()=>{
-  const viewportBottom=window.visualViewport?window.visualViewport.height:window.innerHeight;
-  const inputRect=input.getBoundingClientRect();
-  if(inputRect.bottom>viewportBottom-8){
-   window.scrollBy({top:inputRect.bottom-(viewportBottom-8),behavior:"smooth"});
-  }
-  // 입력창 보정 후 힌트가 다시 상단 밖으로 나갔으면 카드 전체를 약간 아래로 되돌린다.
-  const hintRect=hint?.getBoundingClientRect();
-  if(hintRect&&hintRect.top<safeTop){
-   window.scrollBy({top:hintRect.top-safeTop,behavior:"smooth"});
-  }
- },90);
+ const vv=window.visualViewport;
+ const vh=vv?vv.height:window.innerHeight;
+ document.documentElement.style.setProperty("--cho-vvh",vh+"px");
+ // 고정된 카드 내부에서 입력창이 맨 아래에 오도록 하여 문제·힌트·순위가 바로 위에 붙어 보이게 한다.
+ requestAnimationFrame(()=>{
+  card.scrollTop=card.scrollHeight;
+  setTimeout(()=>{card.scrollTop=card.scrollHeight;},80);
+ });
 }
 function setChoKeyboardMode(on){
  document.body.classList.toggle("cho-keyboard",!!on);
- if(on)setTimeout(positionChoForKeyboard,140);
+ if(on){
+  setTimeout(positionChoForKeyboard,80);
+ }else{
+  document.documentElement.style.removeProperty("--cho-vvh");
+  const card=$("#choCard");if(card)card.scrollTop=0;
+ }
 }
 choInput.addEventListener("focus",()=>setChoKeyboardMode(true));
 choInput.addEventListener("blur",()=>setTimeout(()=>setChoKeyboardMode(false),120));
