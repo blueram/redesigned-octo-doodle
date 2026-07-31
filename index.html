@@ -75,7 +75,7 @@
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="logo">🎮 Mini<span>Game</span> <small id="titleVersion" style="font-size:14px;color:#7dd3fc;vertical-align:middle">V4.5.0</small></div>
+    <div class="logo">🎮 Mini<span>Game</span> <small id="titleVersion" style="font-size:14px;color:#7dd3fc;vertical-align:middle">V4.5.1</small></div>
     <button id="homeBtn" class="hidden">🏠 홈</button>
   </div>
 
@@ -126,6 +126,10 @@
       <div class="muted">방 코드</div><div id="roomCode" class="roomcode">------</div>
       <div class="row"><button id="copyRoom">코드 복사</button><button id="shareRoom">초대 링크 공유</button></div>
       <div class="room-status"><span id="roomCapacity" class="muted">참가자 1 / 4명</span><button id="readyOnline" class="hidden">준비하기</button></div><div style="height:8px"></div><div id="roomPlayers" class="players"></div>
+      <div id="testBotPanel" class="hidden" style="margin-top:12px;padding:12px;border:1px dashed #64748b;border-radius:14px">
+        <div class="muted" style="margin-bottom:8px">🧪 테스트 모드 · 봇도 실제 참가자 순번으로 등록됩니다.</div>
+        <div class="row"><button id="addTestBot">봇 1명 추가</button><button id="removeTestBots">봇 전체 제거</button></div>
+      </div>
       <div style="height:12px"></div><button id="startOnline" class="primary" style="width:100%">온라인 게임 시작</button>
       <div id="roomGuide" class="muted" style="margin-top:8px">방장만 시작할 수 있으며, 상대가 없으면 시작되지 않습니다.</div>
     </div>

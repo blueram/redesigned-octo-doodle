@@ -20,6 +20,8 @@ function ensureStats(){
 }
 ensureStats();
 let game="", room="", isHost=false, roomRef=null, unsub=null, mode="solo";
+const TEST_MODE=new URLSearchParams(location.search).get("test")==="1";
+let botActionTimer=null;
 const toast=t=>{const x=$("#toast");x.textContent=t;x.classList.add("show");setTimeout(()=>x.classList.remove("show"),1800)};
 function saveStats(){localStorage.mg_stats=JSON.stringify(stats);renderStats()}
 function screen(id){$$(".screen").forEach(x=>x.classList.remove("active"));$("#"+id).classList.add("active");$("#homeBtn").classList.toggle("hidden",id==="home");$("#titleVersion")?.classList.toggle("hidden",id!=="home")}
@@ -65,12 +67,13 @@ function gameName(g){return g==="chosung"?"초성게임":g==="ox"?"OX 이동게�
 function maxPlayersForGame(g=game){return g==="chosung"?4:2}
 function openLobby(g){game=g;$("#lobbyTitle").textContent=gameName(g)+" 대기실";$("#roomPanel").classList.add("hidden");loadOXSurvivalRank();$("#roomGuide").textContent=g==="chosung"?"초성퀴즈는 최대 4명이며, 2명 이상이면 방장이 시작할 수 있습니다.":"방장만 시작할 수 있으며, 상대가 없으면 시작되지 않습니다.";screen("lobby")}
 function stopHeartbeat(){clearInterval(heartbeatTimer);heartbeatTimer=null}
-function activePlayers(players){const now=Date.now();return Object.fromEntries(Object.entries(players||{}).filter(([,p])=>p&&p.connected!==false&&now-(p.lastSeen||now)<35000))}
-async function leave(){hideResult();stopHeartbeat();if(roomRef){await roomRef.child("players/"+playerId).remove().catch(()=>{});roomRef=null}if(unsub)unsub();unsub=null;room="";game="";screen("home");hall()}
+function activePlayers(players){const now=Date.now();return Object.fromEntries(Object.entries(players||{}).filter(([,p])=>p&&(p.isBot||(p.connected!==false&&now-(p.lastSeen||now)<35000))))}
+function playerOrderEntries(players){return Object.entries(players||{}).sort(([a,pa],[b,pb])=>(Number(pa.joinOrder)||999)-(Number(pb.joinOrder)||999)||String(a).localeCompare(String(b)))}
+async function leave(){hideResult();stopHeartbeat();clearTimeout(botActionTimer);botActionTimer=null;if(roomRef){await roomRef.child("players/"+playerId).remove().catch(()=>{});roomRef=null}if(unsub)unsub();unsub=null;room="";game="";screen("home");hall()}
 function beginHeartbeat(){stopHeartbeat();const ping=()=>roomRef&&roomRef.child("players/"+playerId).update({connected:true,lastSeen:firebase.database.ServerValue.TIMESTAMP}).catch(()=>{});ping();heartbeatTimer=setInterval(ping,10000)}
 async function registerPlayer(asHost=false){
  const now=Date.now();
- const player={nick:nickname,userId:uid,deviceId,sessionId:playerId,score:0,ready:asHost,connected:true,lastSeen:now,joinedAt:now};
+ const player={nick:nickname,userId:uid,deviceId,sessionId:playerId,score:0,ready:asHost,connected:true,lastSeen:now,joinedAt:now,joinOrder:1};
  if(asHost){
    const created=await roomRef.transaction(r=>{
      if(r)return;
@@ -88,7 +91,9 @@ async function registerPlayer(asHost=false){
      const live=activePlayers(players);
      Object.keys(players).forEach(id=>{if(!live[id]&&id!==playerId)delete players[id]});
      if(!players[playerId]&&Object.keys(activePlayers(players)).length>=max)return;
-     players[playerId]=player;
+     const existing=players[playerId];
+     const maxOrder=Math.max(0,...Object.values(players).map(p=>Number(p?.joinOrder)||0));
+     players[playerId]={...player,joinOrder:existing?.joinOrder||maxOrder+1};
      return players;
    },undefined,false);
    if(!joined.committed){const e=new Error("ROOM_FULL");e.code="ROOM_FULL";throw e}
@@ -102,13 +107,22 @@ async function registerPlayer(asHost=false){
 $("#soloPlay").onclick=()=>startGame("solo");
 $("#createRoom").onclick=async()=>{if(!db)return toast("Firebase 연결에 실패했습니다.");room=Math.random().toString(36).slice(2,8).toUpperCase();isHost=true;mode="online";roomRef=db.ref("rooms/"+room);try{await registerPlayer(true);showRoom();watchRoom()}catch{toast("방을 만들지 못했습니다.")}};
 $("#joinRoom").onclick=async()=>{if(!db)return toast("Firebase 연결에 실패했습니다.");room=$("#roomInput").value.trim().toUpperCase();if(room.length<4)return toast("방 코드를 확인해 주세요.");roomRef=db.ref("rooms/"+room);const snap=await roomRef.once("value"),v=snap.val();if(!v)return toast("방을 찾을 수 없습니다.");if(v.game!==game)return toast("다른 게임의 방입니다.");mode="online";try{await registerPlayer(false)}catch(e){console.warn("방 입장 실패",e);if(e?.code==="ROOM_FULL")return toast(`현재 방은 최대 ${maxPlayersForGame(v.game)}명까지 접속할 수 있습니다.`);if(e?.code==="ROOM_NOT_FOUND")return toast("방이 종료되었거나 존재하지 않습니다.");if(e?.code==="WRONG_GAME")return toast("다른 게임의 방입니다.");return toast("방 접속에 실패했습니다. 인터넷 연결 후 다시 시도해 주세요.")}const fresh=(await roomRef.once("value")).val()||{};isHost=fresh.host===playerId;showRoom();watchRoom()};
-function showRoom(){$("#roomPanel").classList.remove("hidden");$("#roomCode").textContent=room}
+function showRoom(){$("#roomPanel").classList.remove("hidden");$("#roomCode").textContent=room;$("#testBotPanel")?.classList.toggle("hidden",!TEST_MODE)}
 function watchRoom(){const cb=s=>{const v=s.val();if(!v)return;const ps=activePlayers(v.players||{});renderRoomPlayers(ps);isHost=v.host===playerId;const count=Object.keys(ps).length,max=maxPlayersForGame(v.game);const allReady=Object.entries(ps).every(([id,p])=>id===v.host||p.ready);$("#roomCapacity").textContent=`참가자 ${count} / ${max}명`;$("#readyOnline").classList.toggle("hidden",isHost||v.game!=="chosung");$("#readyOnline").textContent=ps[playerId]?.ready?"준비 취소":"준비하기";$("#startOnline").disabled=!isHost||count<2||(v.game==="chosung"&&!allReady);$("#roomGuide").textContent=v.game==="chosung"?(count<2?"2명 이상 입장하면 시작할 수 있습니다.":(!allReady?"참가자 전원이 준비되면 방장이 시작할 수 있습니다.":"준비 완료! 방장이 게임을 시작할 수 있습니다.")):"방장만 시작할 수 있으며, 상대가 없으면 시작되지 않습니다.";if(v.status==="playing")startGame("online",v)};roomRef.on("value",cb);unsub=()=>roomRef.off("value",cb)}
-function renderRoomPlayers(ps){$("#roomPlayers").innerHTML=Object.entries(ps).map(([id,p])=>`<div class="player ${id===playerId?"me":""}"><b>${esc(p.nick)}</b><div class="ready-dot ${p.ready?"ready-ok":"ready-wait"}">${id===playerId?"나 · ":""}${p.ready?"준비 완료":"준비 중"}</div></div>`).join("")}
+function renderRoomPlayers(ps){$("#roomPlayers").innerHTML=playerOrderEntries(ps).map(([id,p],i)=>`<div class="player ${id===playerId?"me":""}"><b>${i+1}번 · ${esc(p.nick)}${p.isBot?" 🤖":""}</b><div class="ready-dot ${p.ready?"ready-ok":"ready-wait"}">${id===playerId?"나 · ":""}${p.ready?"준비 완료":"준비 중"}</div></div>`).join("")}
 $("#readyOnline").onclick=async()=>{if(!roomRef||isHost)return;const ref=roomRef.child("players/"+playerId+"/ready");const snap=await ref.once("value");await ref.set(!snap.val())}
 $("#copyRoom").onclick=()=>navigator.clipboard?.writeText(room).then(()=>toast("방 코드를 복사했습니다."));
 $("#shareRoom").onclick=async()=>{const url=location.origin+location.pathname+"?game="+game+"&room="+room;try{await navigator.share({title:"MiniGame 초대",text:`${nickname}님의 ${gameName(game)} 방`,url})}catch{navigator.clipboard?.writeText(url);toast("초대 링크를 복사했습니다.")}};
-$("#startOnline").onclick=async()=>{if(!isHost)return;await roomRef.update({status:"playing",started:Date.now(),state:null,rematch:null})};
+$("#startOnline").onclick=async()=>{if(!isHost)return;const snap=await roomRef.child("players").once("value");const ps=activePlayers(snap.val()||{});const playOrder=playerOrderEntries(ps).map(([id])=>id);await roomRef.update({status:"playing",started:firebase.database.ServerValue.TIMESTAMP,state:null,rematch:null,playOrder,roundNo:1})};
+async function addTestBot(){
+ if(!TEST_MODE||!roomRef||!isHost)return;
+ const max=maxPlayersForGame(game);
+ const ref=roomRef.child("players");
+ const tx=await ref.transaction(players=>{players=players||{};const live=activePlayers(players);if(Object.keys(live).length>=max)return;const n=Object.values(players).filter(p=>p?.isBot).length+1;const id=`bot_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;const maxOrder=Math.max(0,...Object.values(players).map(p=>Number(p?.joinOrder)||0));players[id]={nick:`테스트봇 ${n}`,isBot:true,score:0,ready:true,connected:true,lastSeen:Date.now(),joinedAt:Date.now(),joinOrder:maxOrder+1};return players},undefined,false);
+ if(!tx.committed)toast("참가 인원이 가득 찼습니다.");
+}
+async function removeTestBots(){if(TEST_MODE&&roomRef&&isHost)await roomRef.child("players").once("value").then(s=>Promise.all(Object.entries(s.val()||{}).filter(([,p])=>p?.isBot).map(([id])=>roomRef.child("players/"+id).remove())))}
+$("#addTestBot")?.addEventListener("click",addTestBot);$("#removeTestBots")?.addEventListener("click",removeTestBots);
 function startGame(m,v){mode=m;if(unsub){unsub();unsub=null}if(game==="chosung")startChosung();else if(game==="ox")startOX();else startTerrainSelection()}
 
 /* CHOSUNG */
@@ -487,7 +501,7 @@ async function setupChoOnline(){
    choScores=st.scores||{};
    renderChoScores();
    const top=Math.max(...Object.values(choScores),0);$("#choProgress").style.width=Math.min(100,top*10)+"%";
-   if(top>=10){clearChoHintTimers();const winner=Object.keys(choScores).find(id=>choScores[id]===top);roomRef.child("players").once("value").then(ps=>{const players=ps.val()||{},wn=players[winner]?.nick||"상대";const sec=((Date.now()-((st.startedAt)||Date.now()))/1000).toFixed(1);const ranking=Object.entries(players).sort(([a],[b])=>(choScores[b]||0)-(choScores[a]||0)).map(([id,p],i)=>`${i+1}위 ${esc(p.nick)} · ${choScores[id]||0}점`).join("<br>");showResult("🏆 "+wn+" 우승",`${ranking}<br><br>경기 시간 <b>${sec}초</b>`,"다시하기","방에서 나가기");$("#resultRetry").onclick=()=>requestRematch("chosung");$("#resultExit").onclick=()=>{hideResult();leave()}});return;}
+   if(top>=10){clearChoHintTimers();const winner=Object.keys(choScores).find(id=>choScores[id]===top);roomRef.child("players").once("value").then(ps=>{const players=ps.val()||{},wn=players[winner]?.nick||"상대";const sec=((Date.now()-((st.startedAt)||Date.now()))/1000).toFixed(1);const ranking=Object.entries(players).sort(([a,pa],[b,pb])=>(choScores[b]||0)-(choScores[a]||0)||(Number(pa.joinOrder)||999)-(Number(pb.joinOrder)||999)).map(([id,p],i)=>`${i+1}위 ${esc(p.nick)} · ${choScores[id]||0}점`).join("<br>");showResult("🏆 "+wn+" 우승",`${ranking}<br><br>경기 시간 <b>${sec}초</b>`,"다시하기","방에서 나가기");$("#resultRetry").onclick=()=>requestRematch("chosung");$("#resultExit").onclick=()=>{hideResult();leave()}});return;}
 
    // 같은 문제에서 점수/정답 상태만 바뀐 경우 화면과 힌트 타이머를 다시 시작하지 않음
    const roundKey=`${st.round||1}_${st.roundToken||st.word}`;
@@ -499,6 +513,22 @@ async function setupChoOnline(){
      $("#choAnswer").value="";$("#choAnswer").disabled=false;$("#choSubmit").disabled=false;$("#choWinner").classList.remove("show");$("#choWinner").textContent="";
      startChoHints(st.word,()=>timeoutChoOnline(st.round,st.answer));
      $("#choAnswer").focus();
+     clearTimeout(botActionTimer);botActionTimer=null;
+     if(TEST_MODE&&isHost){
+       const bots=playerOrderEntries(choPlayers).filter(([,p])=>p.isBot);
+       if(bots.length){
+         const [botId]=bots[Math.floor(Math.random()*bots.length)];
+         botActionTimer=setTimeout(async()=>{
+           const ref=roomRef.child("state");
+           await ref.transaction(cur=>{
+             if(!cur||cur.type!=="chosung"||cur.roundToken!==st.roundToken||cur.roundWinner||cur.timedOut)return cur;
+             const correct=Math.random()<0.72;
+             if(!correct){cur.lastBotAttempt={botId,answer:"오답",at:Date.now()};return cur;}
+             cur.scores=cur.scores||{};cur.scores[botId]=(cur.scores[botId]||0)+1;cur.roundWinner=botId;cur.answeredAt=Date.now();return cur;
+           });
+         },1800+Math.floor(Math.random()*2600));
+       }
+     }
    }
 
    if(st.timedOut){
@@ -566,6 +596,7 @@ async function setupChoOnline(){
    clearInterval(choTimer);choTimer=null;
    clearTimeout(choAdvanceTimer);
    choAdvanceTimer=null;
+   clearTimeout(botActionTimer);botActionTimer=null;
    choAdvancing=false;
    clearChoHintTimers();
    stateRef.off("value",cb);
@@ -577,8 +608,7 @@ function renderChoScores(){
    const entries=Object.entries(choPlayers).sort(([a,pa],[b,pb])=>{
      const diff=(choScores[b]||0)-(choScores[a]||0);
      if(diff)return diff;
-     if(a===playerId)return -1;if(b===playerId)return 1;
-     return (pa.joinedAt||0)-(pb.joinedAt||0);
+     return (Number(pa.joinOrder)||999)-(Number(pb.joinOrder)||999)||String(a).localeCompare(String(b));
    });
    $("#choScores").innerHTML=entries.map(([id,p],i)=>
      `<div class="cho-rank-item ${id===playerId?"me":""}"><b>${["🥇","🥈","🥉","4️⃣"][i]||i+1} ${esc(p.nick)}</b><span class="pts">${choScores[id]||0}점</span></div>`
