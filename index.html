@@ -70,12 +70,72 @@
       body.cho-keyboard #chosung .cho-input-row input,body.cho-keyboard #chosung .cho-input-row button{padding:9px 8px}
       body.cho-keyboard #chosung .cho-layout>.muted:last-child{display:none}
     }
+
+/* V4.5.4 모바일 초성퀴즈 전용 UI */
+#chosung{--cho-panel:#111b2e;--cho-panel2:#17243b;--cho-accent:#ffc21c;--cho-cyan:#24d7ff;--cho-green:#44e08a}
+#chosung .cho-layout{max-width:720px;margin:0 auto;padding:14px;background:linear-gradient(180deg,#0c1528,#101d33);border-color:#273a59;border-radius:26px;gap:13px;overflow:hidden}
+#chosung .cho-mobile-head{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}
+#chosung .cho-mobile-head .head-side{display:flex;gap:6px;align-items:center}.cho-mobile-head .head-side:last-child{justify-content:flex-end}
+#chosung .cho-mobile-head .head-title{text-align:center;font-size:19px;font-weight:950;white-space:nowrap}
+#chosung .cho-stat{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:34px;padding:6px 10px;border-radius:12px;background:#17243b;border:1px solid #29405f;font-size:12px;font-weight:850}
+#chosung #choTime{color:#ffd12d;font-size:18px}.cho-mobile-head #choMode{color:#54e893}
+#chosung .cho-question{position:relative;padding:20px 12px 18px;background:linear-gradient(145deg,#18253b,#111b2e);border:1px solid #2a3b57;border-radius:22px;box-shadow:0 14px 30px rgba(0,0,0,.22)}
+#chosung .cho-instruction{font-size:13px;color:#a8b5ca;margin-bottom:14px}
+#chosung .chosung{display:flex;justify-content:center;gap:10px;letter-spacing:0;font-size:0;min-height:76px;align-items:center}
+#chosung .cho-letter{display:grid;place-items:center;width:68px;height:68px;border-radius:15px;background:linear-gradient(145deg,#ffc51c,#f3a800);color:#10203a;font-size:40px;font-weight:950;box-shadow:0 8px 0 #b87c00,0 12px 24px rgba(0,0,0,.25)}
+#chosung .cho-hint-steps{display:grid;gap:8px;padding:13px;background:linear-gradient(145deg,#17243a,#111b2e);border:1px solid #293c59;border-radius:20px}
+#chosung .cho-hint-title{font-size:17px;font-weight:950;margin-bottom:2px}
+#chosung .cho-hint-row{display:grid;grid-template-columns:34px minmax(0,1fr) 24px;gap:9px;align-items:center;padding:10px;border-radius:13px;background:#172338;border:1px solid #2c3d58;color:#8190a6;min-height:48px}
+#chosung .cho-hint-row.active{color:#f8fafc;border-color:#3d5b83;background:#1b2b45}.cho-hint-row.revealed{color:#f8fafc}
+#chosung .cho-hint-num{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;color:#fff;font-weight:950}.cho-hint-row:nth-child(2) .cho-hint-num{background:#168ef1}.cho-hint-row:nth-child(3) .cho-hint-num{background:#25ba69}.cho-hint-row:nth-child(4) .cho-hint-num{background:#8655df}
+#chosung .cho-hint-text{font-size:14px;line-height:1.35}.cho-hint-lock{font-size:15px;text-align:center}
+#chosung #choHint{display:none!important}
+#chosung .cho-bottom-panel{position:sticky;bottom:0;z-index:10;padding:11px;background:linear-gradient(180deg,rgba(11,20,36,.95),#0b1424);border:2px solid var(--cho-cyan);border-radius:20px;box-shadow:0 0 24px rgba(36,215,255,.18)}
+#chosung .cho-input-row{grid-template-columns:minmax(0,1fr) 88px;gap:8px;margin:0}
+#chosung .cho-input-row input{height:54px;font-size:17px;padding:0 15px;background:#0b1424;border:1px solid #3a4d6d;border-radius:14px}
+#chosung .cho-input-row button{height:54px;background:linear-gradient(135deg,#16bdf0,#4055ef);font-size:16px}
+#chosung .cho-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+#chosung .cho-action{padding:10px;background:#1a2940;border:1px solid #2b3d59;color:#e8eef8;border-radius:13px;font-size:13px}.cho-action small{display:block;color:#facc15;margin-top:2px}
+#chosung .cho-rank-wrap{padding:8px;background:#0d1728;border-radius:15px}.cho-rank-title{display:none}
+#chosung .cho-winner{margin:0}
+#chosung .progress{height:5px;background:#111b2e}
+@media(max-width:650px){
+ body:has(#chosung.active){overflow:hidden}
+ body:has(#chosung.active) .top{display:none}
+ body:has(#chosung.active) .wrap{padding:0;max-width:none}
+ #chosung.active{height:100dvh;padding:6px;overflow:hidden}
+ #chosung .cho-layout{height:100%;max-height:100%;padding:9px;gap:7px;border-radius:20px;overflow-y:auto;overscroll-behavior:contain}
+ #chosung .cho-mobile-head .head-title{font-size:17px}
+ #chosung .cho-stat{min-height:30px;padding:4px 7px;font-size:10px}
+ #chosung #choTime{font-size:16px}
+ #chosung .cho-question{padding:10px 8px 12px;border-radius:17px}
+ #chosung .cho-category{margin:0 0 5px;font-size:10px;padding:3px 7px}
+ #chosung .cho-instruction{display:none}
+ #chosung .chosung{min-height:54px;gap:7px}
+ #chosung .cho-letter{width:51px;height:51px;font-size:30px;border-radius:12px;box-shadow:0 5px 0 #b87c00,0 8px 16px rgba(0,0,0,.22)}
+ #chosung .cho-hint-steps{padding:7px;gap:5px;border-radius:15px}
+ #chosung .cho-hint-title{font-size:13px}
+ #chosung .cho-hint-row{grid-template-columns:29px minmax(0,1fr) 20px;min-height:38px;padding:6px 7px;gap:7px;border-radius:10px}
+ #chosung .cho-hint-num{width:24px;height:24px;font-size:12px}
+ #chosung .cho-hint-text{font-size:12px}
+ #chosung .cho-rank-wrap{padding:5px}.cho-rank-item{padding:4px 3px!important;font-size:10px!important}.cho-rank-item .pts{font-size:11px!important}
+ #chosung .cho-bottom-panel{padding:7px;border-radius:15px}
+ #chosung .cho-input-row input,#chosung .cho-input-row button{height:46px}
+ #chosung .cho-actions{margin-top:5px;gap:5px}.cho-action{padding:7px;font-size:11px}
+ body.cho-keyboard #chosung .cho-layout{position:fixed;inset:4px;max-height:calc(var(--cho-vvh,100dvh) - 8px);padding:7px;gap:5px;overflow-y:auto}
+ body.cho-keyboard #chosung .cho-question{padding:7px}
+ body.cho-keyboard #chosung .cho-letter{width:43px;height:43px;font-size:26px;box-shadow:0 4px 0 #b87c00}
+ body.cho-keyboard #chosung .cho-hint-steps{padding:5px;gap:3px}
+ body.cho-keyboard #chosung .cho-hint-row{min-height:32px;padding:4px 6px}
+ body.cho-keyboard #chosung .cho-actions{display:none}
+}
+
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="logo">🎮 Mini<span>Game</span> <small id="titleVersion" style="font-size:14px;color:#7dd3fc;vertical-align:middle">V4.5.3</small></div>
+    <div class="logo">🎮 Mini<span>Game</span> <small id="titleVersion" style="font-size:14px;color:#7dd3fc;vertical-align:middle">V4.5.4</small></div>
     <button id="homeBtn" class="hidden">🏠 홈</button>
   </div>
 
@@ -137,21 +197,30 @@
 
   <section id="chosung" class="screen">
     <div id="choCard" class="card cho-layout">
-      <div class="cho-topline"><span class="pill" id="choMode">혼자</span><span class="pill" id="choRound">1 / 10</span><span class="pill" id="choTime">0.0초</span></div>
+      <div class="cho-mobile-head">
+        <div class="head-side"><span class="cho-stat" id="choRound">1 / 10</span></div>
+        <div class="head-title">🧠 초성 퀴즈 ✨</div>
+        <div class="head-side"><span class="cho-stat" id="choTime">0.0초</span><span class="cho-stat" id="choMode">혼자</span></div>
+      </div>
       <div class="progress"><i id="choProgress"></i></div>
       <div id="choQuestion" class="cho-question">
         <span id="choCategory" class="pill cho-category">일상 단어</span>
-        <div class="muted">초성을 보고 단어를 맞혀보세요</div>
+        <div class="cho-instruction">💡 초성을 보고 단어를 맞혀보세요!</div>
         <div class="chosung" id="choQ">ㄱㅁ</div>
         <div id="choHint" class="cho-hint"></div>
       </div>
-      <div id="choWinner" class="cho-winner" aria-live="polite"></div>
-      <div class="cho-rank-wrap">
-        <div class="cho-rank-title">실시간 순위 · 입력창 바로 위</div>
-        <div id="choScores" class="cho-rank-strip"></div>
+      <div class="cho-hint-steps" id="choHintSteps">
+        <div class="cho-hint-title">✨ 힌트</div>
+        <div class="cho-hint-row" data-step="0"><span class="cho-hint-num">1</span><span class="cho-hint-text">잠시 후 공개됩니다</span><span class="cho-hint-lock">🔒</span></div>
+        <div class="cho-hint-row" data-step="1"><span class="cho-hint-num">2</span><span class="cho-hint-text">잠시 후 공개됩니다</span><span class="cho-hint-lock">🔒</span></div>
+        <div class="cho-hint-row" data-step="2"><span class="cho-hint-num">3</span><span class="cho-hint-text">잠시 후 공개됩니다</span><span class="cho-hint-lock">🔒</span></div>
       </div>
-      <div class="cho-input-row"><input id="choAnswer" autocomplete="off" maxlength="20" placeholder="정답을 입력하세요"><button id="choSubmit" class="primary">제출</button></div>
-      <div class="muted" style="text-align:center;font-size:12px">가장 먼저 입력된 정답 1명만 점수를 얻습니다.</div>
+      <div id="choWinner" class="cho-winner" aria-live="polite"></div>
+      <div class="cho-rank-wrap"><div class="cho-rank-title">실시간 순위</div><div id="choScores" class="cho-rank-strip"></div></div>
+      <div class="cho-bottom-panel">
+        <div class="cho-input-row"><input id="choAnswer" inputmode="text" enterkeyhint="done" autocapitalize="off" autocorrect="off" autocomplete="off" maxlength="20" placeholder="정답을 입력하세요"><button id="choSubmit" class="primary">입력</button></div>
+        <div class="cho-actions"><button type="button" class="cho-action" id="choFocusBtn">⌨️ 바로 입력<small>키보드 열기</small></button><button type="button" class="cho-action" id="choRefocusBtn">🎯 문제 집중<small>입력창 유지</small></button></div>
+      </div>
     </div>
   </section>
 
