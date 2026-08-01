@@ -71,7 +71,7 @@
       body.cho-keyboard #chosung .cho-layout>.muted:last-child{display:none}
     }
 
-/* V4.5.4 모바일 초성퀴즈 전용 UI */
+/* V4.5.5 모바일 초성퀴즈 전용 UI */
 #chosung{--cho-panel:#111b2e;--cho-panel2:#17243b;--cho-accent:#ffc21c;--cho-cyan:#24d7ff;--cho-green:#44e08a}
 #chosung .cho-layout{max-width:720px;margin:0 auto;padding:14px;background:linear-gradient(180deg,#0c1528,#101d33);border-color:#273a59;border-radius:26px;gap:13px;overflow:hidden}
 #chosung .cho-mobile-head{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}
@@ -130,12 +130,20 @@
  body.cho-keyboard #chosung .cho-actions{display:none}
 }
 
+
+/* V4.5.5: iPhone keyboard viewport lock */
+body.cho-screen-lock{position:fixed;inset:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none}
+body.cho-screen-lock #chosung.active{position:fixed;left:0;right:0;top:var(--cho-vv-top,0px);height:var(--cho-vvh,100dvh);min-height:0;overflow:hidden;transform:none}
+body.cho-screen-lock #chosung .cho-layout{height:100%;max-height:100%;overscroll-behavior:none;scroll-behavior:auto}
+body.cho-screen-lock #chosung .cho-bottom-panel{position:sticky;bottom:0;margin-top:auto}
+body.cho-keyboard #chosung .cho-layout{top:var(--cho-vv-top,0px)!important;bottom:auto!important;height:var(--cho-vvh,100dvh)!important;max-height:var(--cho-vvh,100dvh)!important}
+
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="logo">🎮 Mini<span>Game</span> <small id="titleVersion" style="font-size:14px;color:#7dd3fc;vertical-align:middle">V4.5.4</small></div>
+    <div class="logo">🎮 Mini<span>Game</span> <small id="titleVersion" style="font-size:14px;color:#7dd3fc;vertical-align:middle">V4.5.5</small></div>
     <button id="homeBtn" class="hidden">🏠 홈</button>
   </div>
 
