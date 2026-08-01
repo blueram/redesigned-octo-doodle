@@ -69,7 +69,7 @@ function openLobby(g){game=g;$("#lobbyTitle").textContent=gameName(g)+" 대기�
 function stopHeartbeat(){clearInterval(heartbeatTimer);heartbeatTimer=null}
 function activePlayers(players){const now=Date.now();return Object.fromEntries(Object.entries(players||{}).filter(([,p])=>p&&(p.isBot||(p.connected!==false&&now-(p.lastSeen||now)<35000))))}
 function playerOrderEntries(players){return Object.entries(players||{}).sort(([a,pa],[b,pb])=>(Number(pa.joinOrder)||999)-(Number(pb.joinOrder)||999)||String(a).localeCompare(String(b)))}
-async function leave(){hideResult();stopHeartbeat();clearTimeout(botActionTimer);botActionTimer=null;if(roomRef){await roomRef.child("players/"+playerId).remove().catch(()=>{});roomRef=null}if(unsub)unsub();unsub=null;room="";game="";screen("home");hall()}
+async function leave(){hideResult();stopHeartbeat();clearTimeout(botActionTimer);botActionTimer=null;clearTimeout(fortBotTimer);fortBotTimer=null;fortBotBusy=false;if(roomRef){await roomRef.child("players/"+playerId).remove().catch(()=>{});roomRef=null}if(unsub)unsub();unsub=null;room="";game="";screen("home");hall()}
 function beginHeartbeat(){stopHeartbeat();const ping=()=>roomRef&&roomRef.child("players/"+playerId).update({connected:true,lastSeen:firebase.database.ServerValue.TIMESTAMP}).catch(()=>{});ping();heartbeatTimer=setInterval(ping,10000)}
 async function registerPlayer(asHost=false){
  const now=Date.now();
@@ -113,7 +113,7 @@ function renderRoomPlayers(ps){$("#roomPlayers").innerHTML=playerOrderEntries(ps
 $("#readyOnline").onclick=async()=>{if(!roomRef||isHost)return;const ref=roomRef.child("players/"+playerId+"/ready");const snap=await ref.once("value");await ref.set(!snap.val())}
 $("#copyRoom").onclick=()=>navigator.clipboard?.writeText(room).then(()=>toast("방 코드를 복사했습니다."));
 $("#shareRoom").onclick=async()=>{const url=location.origin+location.pathname+"?game="+game+"&room="+room;try{await navigator.share({title:"MiniGame 초대",text:`${nickname}님의 ${gameName(game)} 방`,url})}catch{navigator.clipboard?.writeText(url);toast("초대 링크를 복사했습니다.")}};
-$("#startOnline").onclick=async()=>{if(!isHost)return;const snap=await roomRef.child("players").once("value");const ps=activePlayers(snap.val()||{});const playOrder=playerOrderEntries(ps).map(([id])=>id);await roomRef.update({status:"playing",started:firebase.database.ServerValue.TIMESTAMP,state:null,rematch:null,playOrder,roundNo:1})};
+$("#startOnline").onclick=async()=>{if(!isHost)return;const snap=await roomRef.child("players").once("value");const ps=activePlayers(snap.val()||{});const playOrder=playerOrderEntries(ps).map(([id])=>id);await roomRef.update({status:"playing",started:firebase.database.ServerValue.TIMESTAMP,state:null,rematch:null,playOrder,roundNo:1,terrainResult:null,terrainChoices:null})};
 async function addTestBot(){
  if(!TEST_MODE||!roomRef||!isHost)return;
  const max=maxPlayersForGame(game);
@@ -1000,11 +1000,39 @@ const TERRAINS=[
  {id:"flat_meadow",name:"평탄 초원",level:"쉬움",fn:x=>320+9*Math.sin(x/150)},
  {id:"practice",name:"연습 평지",level:"매우 쉬움",fn:x=>320}
 ];
-let selectedTerrain=null,chosenTerrainId="low_hills",terrainWatchOff=null;
+let selectedTerrain=null,chosenTerrainId="low_hills",terrainWatchOff=null,fortBotTimer=null,fortBotBusy=false;
 function terrainById(id){return TERRAINS.find(t=>t.id===id)||TERRAINS[7]}
 function drawTerrainThumb(canvas,t){const c=canvas.getContext("2d");c.clearRect(0,0,220,78);c.fillStyle="#75c8ff";c.fillRect(0,0,220,78);c.beginPath();c.moveTo(0,t.fn(0)/6);for(let x=0;x<=220;x+=3)c.lineTo(x,t.fn(x*860/220)/6);c.lineTo(220,78);c.lineTo(0,78);c.closePath();c.fillStyle="#6f5439";c.fill()}
 function renderTerrainCards(){const g=$("#terrainGrid");g.innerHTML="";TERRAINS.forEach(t=>{const b=document.createElement("button");b.className="terrain-card"+(selectedTerrain===t.id?" selected":"");b.innerHTML=`<canvas class="terrain-thumb" width="220" height="78"></canvas><div class="terrain-name">${t.name}</div><div class="terrain-level">${t.level}</div>`;b.onclick=()=>{selectedTerrain=t.id;renderTerrainCards();$("#terrainConfirm").disabled=false};g.appendChild(b);drawTerrainThumb(b.querySelector("canvas"),t)})}
-async function startTerrainSelection(){screen("terrainSelect");selectedTerrain=null;$("#terrainConfirm").disabled=true;$("#terrainWait").classList.add("hidden");$("#terrainGuide").textContent=mode==="online"?"각자 지형을 선택하면 둘 중 하나가 무작위로 결정됩니다.":"플레이할 지형을 하나 선택하세요.";renderTerrainCards();if(mode==="online"){await roomRef.child("terrainChoices/"+playerId).remove().catch(()=>{});const resultRef=roomRef.child("terrainResult"),choicesRef=roomRef.child("terrainChoices");const resultCb=snap=>{const id=snap.val();if(id){chosenTerrainId=id;if(terrainWatchOff)terrainWatchOff();$("#terrainWait").classList.remove("hidden");$("#terrainWait").textContent=`이번 경기 지형: ${terrainById(id).name}`;setTimeout(()=>startFortress(),900)}};const choicesCb=async snap=>{if(!isHost)return;const v=snap.val()||{};if(Object.keys(v).length<2)return;const picks=Object.values(v),result=picks[0]===picks[1]?picks[0]:picks[Math.floor(Math.random()*2)];await roomRef.update({terrainResult:result,terrainChoices:null})};resultRef.on("value",resultCb);choicesRef.on("value",choicesCb);terrainWatchOff=()=>{resultRef.off("value",resultCb);choicesRef.off("value",choicesCb)}}}
+async function startTerrainSelection(){
+ screen("terrainSelect");selectedTerrain=null;$("#terrainConfirm").disabled=true;$("#terrainWait").classList.add("hidden");
+ $("#terrainGuide").textContent=mode==="online"?"각자 지형을 선택하면 참가자 선택 중 하나가 무작위로 결정됩니다.":"플레이할 지형을 하나 선택하세요.";
+ renderTerrainCards();
+ if(mode!=="online")return;
+ await roomRef.child("terrainChoices/"+playerId).remove().catch(()=>{});
+ const resultRef=roomRef.child("terrainResult"),choicesRef=roomRef.child("terrainChoices");
+ const resultCb=snap=>{const id=snap.val();if(id){chosenTerrainId=id;if(terrainWatchOff)terrainWatchOff();$("#terrainWait").classList.remove("hidden");$("#terrainWait").textContent=`이번 경기 지형: ${terrainById(id).name}`;setTimeout(()=>startFortress(),900)}};
+ const choicesCb=async snap=>{
+   if(!isHost)return;
+   const roomSnap=await roomRef.once("value"),rv=roomSnap.val()||{};
+   const live=activePlayers(rv.players||{}),required=Object.keys(live).length;
+   const v=snap.val()||{};
+   if(Object.keys(v).length<required)return;
+   const picks=Object.values(v).filter(id=>TERRAINS.some(t=>t.id===id));
+   if(!picks.length)return;
+   const result=picks[Math.floor(Math.random()*picks.length)];
+   await roomRef.update({terrainResult:result,terrainChoices:null});
+ };
+ resultRef.on("value",resultCb);choicesRef.on("value",choicesCb);
+ terrainWatchOff=()=>{resultRef.off("value",resultCb);choicesRef.off("value",choicesCb)};
+ if(isHost){
+   const players=(await roomRef.child("players").once("value")).val()||{};
+   const bots=Object.entries(activePlayers(players)).filter(([,p])=>p?.isBot);
+   const updates={};
+   for(const [id] of bots)updates[id]=TERRAINS[Math.floor(Math.random()*TERRAINS.length)].id;
+   if(Object.keys(updates).length)await roomRef.child("terrainChoices").update(updates);
+ }
+}
 $("#terrainConfirm").onclick=async()=>{if(!selectedTerrain)return;if(mode!=="online"){chosenTerrainId=selectedTerrain;startFortress();return}$("#terrainConfirm").disabled=true;$("#terrainWait").classList.remove("hidden");await roomRef.child("terrainChoices/"+playerId).set(selectedTerrain)}
 
 /* FORTRESS - 탱크 방향 고정, 좌우 이동, 각도/파워 별도 조절 */
@@ -1135,10 +1163,10 @@ function shotVector(shooter){
  return {x:t.x,y:terrainY(t.x)-27,vx:dir*Math.cos(elev)*speed,vy:-Math.sin(elev)*speed};
 }
 
-function fireFT(forceHit=false){
+function fireFT(forceHit=false,allowBot=false){
  const shooter=ft.turn, me=myFTIndex();
  if(ft.over||anim)return;
- if(mode!=="solo"&&shooter!==me)return;
+ if(mode!=="solo"&&shooter!==me&&!allowBot)return;
  if(mode==="solo"&&shooter===0&&me!==0)return;
 
  anim=true;
@@ -1324,6 +1352,28 @@ function pcFT(){
  setTimeout(()=>fireFT(),400);
 }
 
+function scheduleOnlineFortBot(players,order){
+ clearTimeout(fortBotTimer);fortBotTimer=null;
+ if(mode!=="online"||!isHost||!ft||ft.over||anim||fortBotBusy)return;
+ const ids=Array.isArray(order)&&order.length?order:playerOrderEntries(activePlayers(players||{})).map(([id])=>id);
+ const botId=ids[ft.turn];
+ if(!botId||!players?.[botId]?.isBot)return;
+ fortBotBusy=true;
+ fortBotTimer=setTimeout(()=>{
+   try{
+     if(!ft||ft.over||anim||ids[ft.turn]!==botId)return;
+     const shooter=ft.turn,target=1-shooter;
+     let best={angle:45,power:55,error:99999};
+     for(let a=15;a<=78;a+=3){for(let p=25;p<=90;p+=3){const impact=simulateImpact(shooter,a,p);const err=Math.abs(impact.x-ft.tanks[target].x);if(err<best.error)best={angle:a,power:p,error:err}}}
+     const shouldHit=Math.random()<0.42;
+     ft.tanks[shooter].angle=best.angle;
+     ft.tanks[shooter].power=shouldHit?best.power:Math.max(25,Math.min(90,best.power+(Math.random()<.5?-9:9)));
+     renderFT();
+     setTimeout(()=>fireFT(false,true),450);
+   }finally{setTimeout(()=>{fortBotBusy=false},900)}
+ },900+Math.floor(Math.random()*900));
+}
+
 $("#fortNext").onclick=()=>{
  const keepWins=[...ft.wins];
  const keepMe=ft.me, nextStarter=ft.nextStarter;
@@ -1336,10 +1386,12 @@ $("#fortNext").onclick=()=>{
 };
 
 async function setupFortOnline(){
- const ps=(await roomRef.child("players").once("value")).val()||{};
- const ids=Object.keys(ps), me=ids.indexOf(playerId);
+ const roomSnap=await roomRef.once("value"),roomData=roomSnap.val()||{};
+ const ps=activePlayers(roomData.players||{});
+ const ids=(roomData.playOrder||playerOrderEntries(ps).map(([id])=>id)).filter(id=>ps[id]).slice(0,2);
+ const me=ids.indexOf(playerId);
  if(isHost){
-   ft.me=0;ft.terrainId=chosenTerrainId;
+   ft.me=Math.max(0,me);ft.terrainId=chosenTerrainId;
    await roomRef.child("state").set(ft);
  }else ft.me=me;
 
@@ -1351,6 +1403,7 @@ async function setupFortOnline(){
    ft=st;
    renderFT();
    if((st.wins?.[0]||0)==0&&(st.wins?.[1]||0)==0&&st.tanks?.every(t=>t.hp===100))$("#fortStatus").textContent=(st.turn===me?"내가":"상대가")+" 먼저 시작합니다.";
+   scheduleOnlineFortBot(ps,ids);
  };
  const rematchRef=roomRef.child("rematch");
  const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null,state:null,terrainResult:null,terrainChoices:null});hideResult();startTerrainSelection()};
