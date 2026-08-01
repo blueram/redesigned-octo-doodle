@@ -1087,385 +1087,81 @@ async function startTerrainSelection(){
 }
 $("#terrainConfirm").onclick=async()=>{if(!selectedTerrain)return;if(mode!=="online"){chosenTerrainId=selectedTerrain;startFortress();return}$("#terrainConfirm").disabled=true;$("#terrainWait").classList.remove("hidden");await roomRef.child("terrainChoices/"+playerId).set(selectedTerrain)}
 
-/* FORTRESS - 탱크 방향 고정, 좌우 이동, 각도/파워 별도 조절 */
+/* FORTRESS - 1:1 / 2:1 / 2:2 / 봇 혼합 팀전 */
 const can=$("#fortCanvas"),ctx=can.getContext("2d");
 let ft,anim=false,holdTimer=null,holdDelay=null;
 function baseTerrainY(x){return terrainById(chosenTerrainId).fn(x)}
 function terrainY(x){let y=baseTerrainY(x);for(const c of (ft?.craters||[])){const d=Math.abs(x-c.x);if(d<c.r)y+=c.depth*(1-Math.pow(d/c.r,2));}return Math.min(410,y)}
-function newFT(){
- return{
-   tanks:[
-     {x:100,hp:100,angle:45,power:55},
-     {x:760,hp:100,angle:45,power:55}
-   ],
-   turn:Math.random()<.5?0:1,wins:[0,0],over:false,nextStarter:null,
-   ai:{shots:0,hitAt:5+Math.floor(Math.random()*6),recentPositions:[],lastHit:null},craters:[],trajectoryUsed:[false,false],showTrajectory:false
- };
+function buildFortRoster(ids,players){
+ const use=ids.slice(0,4);
+ return use.map((id,i)=>({
+   id,
+   name:players?.[id]?.name||players?.[id]?.nick||`참가자 ${i+1}`,
+   isBot:!!players?.[id]?.isBot,
+   team:i%2,
+   joinOrder:players?.[id]?.joinOrder||i+1
+ }));
 }
-
+function randomBotProfile(){
+ const accuracy=.24+Math.random()*.58;
+ return {accuracy:Number(accuracy.toFixed(2)),delay:650+Math.floor(Math.random()*1350),moveChance:.2+Math.random()*.55};
+}
+function initialTankX(team,teamSlot){return team===0?(teamSlot===0?90:190):(teamSlot===0?770:670)}
+function newFT(roster=null){
+ const members=roster?.length?roster:[{id:playerId,name:nickname,isBot:false,team:0},{id:"pc",name:"PC",isBot:true,team:1}];
+ const slots=[0,0];
+ const tanks=members.map(m=>{
+   const slot=slots[m.team]++;
+   return {id:m.id,name:m.name,isBot:m.isBot,team:m.team,x:initialTankX(m.team,slot),hp:100,angle:45,power:55,botProfile:m.isBot?randomBotProfile():null};
+ });
+ return {tanks,turn:Math.floor(Math.random()*tanks.length),wins:[0,0],over:false,nextStarter:null,roundWinner:null,craters:[],trajectoryUsed:tanks.map(()=>false),showTrajectory:false,terrainId:chosenTerrainId};
+}
+function aliveIndexes(team=null){return ft.tanks.map((t,i)=>t.hp>0&&(team===null||t.team===team)?i:null).filter(i=>i!==null)}
+function nextAliveTurn(from){for(let step=1;step<=ft.tanks.length;step++){const i=(from+step)%ft.tanks.length;if(ft.tanks[i].hp>0)return i}return from}
+function enemyAlive(shooter){const team=ft.tanks[shooter].team;return aliveIndexes(1-team)}
+function chooseTarget(shooter){const enemies=enemyAlive(shooter);if(!enemies.length)return null;let best=enemies[0],dist=Infinity;for(const i of enemies){const d=Math.abs(ft.tanks[i].x-ft.tanks[shooter].x);if(d<dist){best=i;dist=d}}return best}
+function fortModeLabel(){const a=ft.tanks.filter(t=>t.team===0).length,b=ft.tanks.filter(t=>t.team===1).length;return `${a}:${b}${ft.tanks.some(t=>t.isBot)?" · 봇 혼합":""}`}
 function startFortress(){
  screen("fortress");
- ft=newFT();ft.terrainId=chosenTerrainId;
  if(mode==="online")setupFortOnline();
- else {renderFT();toast(`${ft.turn===0?"내가":"PC가"} 먼저 시작합니다.`);if(ft.turn===1)setTimeout(pcFT,800);} 
+ else {ft=newFT();renderFT();toast(`${ft.turn===0?"내가":"PC가"} 먼저 시작합니다.`);if(ft.turn===1)setTimeout(pcFT,800)}
 }
-
 function drawFT(projectile=null){
- ctx.clearRect(0,0,can.width,can.height);
- const sky=ctx.createLinearGradient(0,0,0,430);
- sky.addColorStop(0,"#66c7ff");sky.addColorStop(.7,"#d7f0ff");
- ctx.fillStyle=sky;ctx.fillRect(0,0,860,430);
-
- ctx.beginPath();ctx.moveTo(0,terrainY(0));
- for(let x=0;x<=860;x+=4)ctx.lineTo(x,terrainY(x));
- ctx.lineTo(860,430);ctx.lineTo(0,430);ctx.closePath();
- ctx.fillStyle="#6f5439";ctx.fill();
-
- ft.tanks.forEach((t,i)=>{
-   const y=terrainY(t.x)-13;
-   ctx.fillStyle=i===0?"#2563eb":"#dc2626";
-   ctx.fillRect(t.x-19,y-8,38,16);
-   ctx.beginPath();ctx.arc(t.x,y-11,10,0,Math.PI*2);ctx.fill();
-
-   // 왼쪽 탱크는 오른쪽, 오른쪽 탱크는 왼쪽만 바라봄
-   const elev=t.angle*Math.PI/180;
-   const dir=i===0?1:-1;
-   const endX=t.x+dir*Math.cos(elev)*31;
-   const endY=y-13-Math.sin(elev)*31;
-   ctx.strokeStyle="#111827";ctx.lineWidth=5;ctx.lineCap="round";
-   ctx.beginPath();ctx.moveTo(t.x,y-13);ctx.lineTo(endX,endY);ctx.stroke();
-
-   ctx.fillStyle="#fff";ctx.font="bold 13px system-ui";
-   ctx.fillText(`HP ${t.hp}`,t.x-20,y-31);
- });
-
- if(projectile){
-   ctx.beginPath();ctx.arc(projectile.x,projectile.y,5,0,Math.PI*2);
-   ctx.fillStyle="#111827";ctx.fill();
- }
+ ctx.clearRect(0,0,can.width,can.height);const sky=ctx.createLinearGradient(0,0,0,430);sky.addColorStop(0,"#66c7ff");sky.addColorStop(.7,"#d7f0ff");ctx.fillStyle=sky;ctx.fillRect(0,0,860,430);
+ ctx.beginPath();ctx.moveTo(0,terrainY(0));for(let x=0;x<=860;x+=4)ctx.lineTo(x,terrainY(x));ctx.lineTo(860,430);ctx.lineTo(0,430);ctx.closePath();ctx.fillStyle="#6f5439";ctx.fill();
+ const colors=["#2563eb","#dc2626","#0ea5e9","#f97316"];
+ ft.tanks.forEach((t,i)=>{const y=terrainY(t.x)-13;ctx.globalAlpha=t.hp>0?1:.35;ctx.fillStyle=colors[i%colors.length];ctx.fillRect(t.x-19,y-8,38,16);ctx.beginPath();ctx.arc(t.x,y-11,10,0,Math.PI*2);ctx.fill();const elev=t.angle*Math.PI/180,dir=t.team===0?1:-1;ctx.strokeStyle="#111827";ctx.lineWidth=5;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(t.x,y-13);ctx.lineTo(t.x+dir*Math.cos(elev)*31,y-13-Math.sin(elev)*31);ctx.stroke();ctx.fillStyle="#fff";ctx.font="bold 12px system-ui";ctx.fillText(`${t.name}${t.isBot?" 🤖":""}`,t.x-30,y-45);ctx.fillText(`HP ${t.hp}`,t.x-20,y-30);ctx.globalAlpha=1});
+ if(projectile){ctx.beginPath();ctx.arc(projectile.x,projectile.y,5,0,Math.PI*2);ctx.fillStyle="#111827";ctx.fill()}
 }
-
-function myFTIndex(){return mode==="solo"?0:(ft.me??0)}
-
+function myFTIndex(){return mode==="solo"?0:(ft.me??-1)}
 function renderFT(){
- const me=myFTIndex(), other=1-me, t=ft.tanks[me];
- if(!ft.over)$("#fortStatus").textContent=ft.turn===me?"내 차례":"상대 차례";
-
- $("#fortPlayers").innerHTML=
- `<div class="player me"><b>${esc(nickname)}</b><div class="score">${ft.wins[me]}승 · HP ${ft.tanks[me].hp}</div></div>
- <div class="player"><b>${mode==="solo"?"PC":"상대"}</b><div class="score">${ft.wins[other]}승 · HP ${ft.tanks[other].hp}</div></div>`;
-
- $("#fortInfo").textContent=`지형 ${terrainById(ft.terrainId||chosenTerrainId).name} · 위치 ${Math.round(t.x)} · 포신 각도 ${t.angle}° · 파워 ${t.power}`;
- const tb=$("#trajectoryBtn");tb.classList.toggle("trajectory-on",!!ft.showTrajectory&&!ft.trajectoryUsed[me]);tb.textContent=ft.trajectoryUsed[me]?"✓ 사용 완료":ft.showTrajectory?"✨ 궤적 ON":"✨ 궤적 ×1";
- const active=!ft.over&&!anim&&ft.turn===me;
- ["moveLeft","moveRight","angleDown","angleUp","powerDown","powerUp","fireBtn","trajectoryBtn"].forEach(id=>$("#"+id).disabled=!active);
- drawFT();
- if(ft.showTrajectory&&!ft.trajectoryUsed[me])drawTrajectory(me);
+ const me=myFTIndex(),mine=ft.tanks[me],current=ft.tanks[ft.turn];if(!ft.over)$("#fortStatus").textContent=current?(ft.turn===me?"내 차례":`${current.name}${current.isBot?" 🤖":""} 차례`):"차례 확인 중";
+ $("#fortPlayers").innerHTML=ft.tanks.map((t,i)=>`<div class="player ${i===me?"me":""}" style="opacity:${t.hp>0?1:.48}"><b>${esc(t.name)}${t.isBot?" 🤖":""} · ${t.team===0?"A팀":"B팀"}</b><div class="score">HP ${t.hp}</div></div>`).join("");
+ if(mine)$("#fortInfo").textContent=`${fortModeLabel()} · 지형 ${terrainById(ft.terrainId||chosenTerrainId).name} · 위치 ${Math.round(mine.x)} · 각도 ${mine.angle}° · 파워 ${mine.power}`;else $("#fortInfo").textContent=`${fortModeLabel()} · 관전 중`;
+ const tb=$("#trajectoryBtn");const used=me>=0?ft.trajectoryUsed?.[me]:true;tb.classList.toggle("trajectory-on",!!ft.showTrajectory&&!used);tb.textContent=used?"✓ 사용 완료":ft.showTrajectory?"✨ 궤적 ON":"✨ 궤적 ×1";
+ const active=me>=0&&!ft.over&&!anim&&ft.turn===me&&mine?.hp>0;["moveLeft","moveRight","angleDown","angleUp","powerDown","powerUp","fireBtn","trajectoryBtn"].forEach(id=>$("#"+id).disabled=!active);drawFT();if(active&&ft.showTrajectory&&!used)drawTrajectory(me)
 }
-
-function adjustFT(kind,delta){
- const me=myFTIndex();
- if(ft.over||anim||ft.turn!==me)return;
- const t=ft.tanks[me];
-
- if(kind==="x"){
-   const min=me===0?35:465, max=me===0?395:825;
-   t.x=Math.max(min,Math.min(max,t.x+delta));
- }else if(kind==="angle"){
-   t.angle=Math.max(10,Math.min(80,t.angle+delta));
- }else{
-   t.power=Math.max(20,Math.min(90,t.power+delta));
- }
- syncFT();
-}
-
-function bindHold(id,action){
- const el=$("#"+id);
- const stop=()=>{clearTimeout(holdDelay);clearInterval(holdTimer);holdDelay=null;holdTimer=null};
- const start=e=>{
-   e.preventDefault();stop();action();
-   holdDelay=setTimeout(()=>{holdTimer=setInterval(action,150)},350);
- };
- el.addEventListener("pointerdown",start);
- ["pointerup","pointercancel","pointerleave"].forEach(ev=>el.addEventListener(ev,stop));
- el.addEventListener("contextmenu",e=>e.preventDefault());
-}
-
-bindHold("moveLeft",()=>adjustFT("x",-6));
-bindHold("moveRight",()=>adjustFT("x",6));
-bindHold("angleDown",()=>adjustFT("angle",-1));
-bindHold("angleUp",()=>adjustFT("angle",1));
-bindHold("powerDown",()=>adjustFT("power",-1));
-bindHold("powerUp",()=>adjustFT("power",1));
-$("#fireBtn").onclick=()=>fireFT();
-
-function syncFT(){
- renderFT();
- if(mode==="online")roomRef.child("state").set(ft);
-}
-
-
-function drawTrajectory(shooter){const p=shotVector(shooter);ctx.save();ctx.shadowColor="rgba(0,0,0,.75)";ctx.shadowBlur=4;ctx.fillStyle="#fde047";for(let i=0;i<180;i++){p.x+=p.vx;p.y+=p.vy;p.vy+=.16;if(i%5===0){ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill()}if(p.x<0||p.x>860||p.y>terrainY(Math.max(0,Math.min(860,p.x))))break}ctx.restore()}
-$("#trajectoryBtn").onclick=()=>{const me=myFTIndex();if(ft.trajectoryUsed[me])return toast("이번 경기의 궤적 아이템을 이미 사용했습니다.");ft.showTrajectory=!ft.showTrajectory;renderFT()};
-function shotVector(shooter){
- const t=ft.tanks[shooter];
- const elev=t.angle*Math.PI/180;
- const dir=shooter===0?1:-1;
- const speed=t.power*.22;
- return {x:t.x,y:terrainY(t.x)-27,vx:dir*Math.cos(elev)*speed,vy:-Math.sin(elev)*speed};
-}
-
-function fireFT(forceHit=false,allowBot=false){
- const shooter=ft.turn, me=myFTIndex();
- if(ft.over||anim)return;
- if(mode!=="solo"&&shooter!==me&&!allowBot)return;
- if(mode==="solo"&&shooter===0&&me!==0)return;
-
- anim=true;
- if(ft.showTrajectory){ft.trajectoryUsed[shooter]=true;ft.showTrajectory=false}
- const p=shotVector(shooter);
- const target=1-shooter;
- let step=0;
-
- function tick(){
-   step++;
-   p.x+=p.vx;p.y+=p.vy;p.vy+=.16;
-   drawFT(p);
-
-   const targetTank=ft.tanks[target];
-   const targetY=terrainY(targetTank.x)-18;
-   const hit=Math.hypot(p.x-targetTank.x,p.y-targetY)<25;
-
-   if(hit)return endShot(shooter,true,p.x);
-   if(p.x<0||p.x>860||p.y>terrainY(Math.max(0,Math.min(860,p.x)))||step>520){
-     return endShot(shooter,false,p.x);
-   }
-   requestAnimationFrame(tick);
- }
- tick();
-}
-
-function endShot(shooter,hit,impactX){
- anim=false;
- const target=1-shooter;
- if(Number.isFinite(impactX)&&impactX>=0&&impactX<=860)ft.craters.push({x:impactX,r:hit?34:26,depth:hit?18:14});
- if(hit){
-   ft.tanks[target].hp=Math.max(0,ft.tanks[target].hp-35);
-   // PC가 사용자 포탄에 맞았을 때 직전 궤적과 피격 지점을 기억한다.
-   if(mode==="solo"&&shooter===0&&target===1){
-     ft.ai=ft.ai||{shots:0,hitAt:5+Math.floor(Math.random()*6),recentPositions:[],lastHit:null};
-     ft.ai.lastHit={
-       impactX:Number.isFinite(impactX)?impactX:ft.tanks[1].x,
-       shooterX:ft.tanks[0].x,
-       angle:ft.tanks[0].angle,
-       power:ft.tanks[0].power,
-       at:Date.now()
-     };
-   }
- }
-
- const dead=ft.tanks.findIndex(t=>t.hp<=0);
- if(dead>=0){
-   const winner=1-dead;
-   ft.wins[winner]++;
-   ft.nextStarter=dead;
-   ft.over=true;
-   $("#fortNext").classList.remove("hidden");
-
-   if(ft.wins[winner]>=3){
-     const me=myFTIndex();
-     if(winner===me){
-       recordGame("fortress","win");
-       if(mode==="online")finishOnline("fortress",playerId);
-     }
-     $("#fortStatus").textContent="최종 경기 종료 · 3승 달성";const mine=winner===myFTIndex();if(!mine)recordGame("fortress","loss");showResult(mine?"🏆 포트리스 승리":"포트리스 패배",`${ft.wins[myFTIndex()]} : ${ft.wins[1-myFTIndex()]}`,"다시 대전하기",mode==="online"?"방에서 나가기":"게임 종료");$("#resultRetry").onclick=()=>requestRematch("fortress");$("#resultExit").onclick=()=>{hideResult();leave()};
-   }else{
-     $("#fortStatus").textContent=`${winner===myFTIndex()?"내":"상대"} 승리 · 다음 판`;
-   }
-   syncFT();
-   return;
- }
-
- ft.turn=target;
- syncFT();
- if(mode==="solo"&&shooter===0&&hit){setTimeout(()=>animatePCMove(()=>pcFT()),350)}else if(mode==="solo"&&ft.turn===1)setTimeout(pcFT,600);
-}
-
-
-function sampleShotPath(shooter,angle,power){
- const t=ft.tanks[shooter],dir=shooter===0?1:-1;
- let x=t.x,y=terrainY(t.x)-27;
- let vx=dir*Math.cos(angle*Math.PI/180)*(power*.22);
- let vy=-Math.sin(angle*Math.PI/180)*(power*.22);
- const path=[];
- for(let i=0;i<520;i++){
-   x+=vx;y+=vy;vy+=.16;
-   if(i%2===0)path.push({x,y});
-   if(x<0||x>860||y>terrainY(Math.max(0,Math.min(860,x))))break;
- }
- return path;
-}
-function terrainSlopeAt(x){return Math.abs(terrainY(Math.min(825,x+10))-terrainY(Math.max(465,x-10)));}
-function choosePCSafePosition(){
- const t=ft.tanks[1];
- ft.ai=ft.ai||{shots:0,hitAt:5+Math.floor(Math.random()*6),recentPositions:[],lastHit:null};
- const hit=ft.ai.lastHit;
- if(!hit)return Math.max(465,Math.min(825,t.x+(Math.random()<.5?-1:1)*(36+Math.floor(Math.random()*55))));
- const path=sampleShotPath(0,hit.angle,hit.power);
- const recent=ft.ai.recentPositions||[];
- const candidates=[];
- // 현재 위치에서 최대 약 126px 범위 안의 실제 이동 가능한 지점을 비교한다.
- for(let d=-126;d<=126;d+=14){
-   const x=Math.max(465,Math.min(825,t.x+d));
-   if(Math.abs(x-t.x)<24)continue;
-   const slope=terrainSlopeAt(x);
-   if(slope>30)continue;
-   const y=terrainY(x)-18;
-   let minPath=999;
-   for(const p of path){const dist=Math.hypot(p.x-x,p.y-y);if(dist<minPath)minPath=dist;}
-   const impactGap=Math.abs(x-hit.impactX);
-   const repeatPenalty=recent.some(v=>Math.abs(v-x)<25)?90:0;
-   const edgePenalty=(x<485||x>805)?18:0;
-   const moveBonus=Math.min(28,Math.abs(x-t.x)*.18);
-   const score=minPath*1.8+impactGap*.55+moveBonus-slope*1.2-repeatPenalty-edgePenalty;
-   candidates.push({x,score});
- }
- if(!candidates.length)return Math.max(465,Math.min(825,t.x+(t.x>645?-70:70)));
- candidates.sort((a,b)=>b.score-a.score);
- return candidates[0].x;
-}
-function animatePCMove(done){
- if(ft.over||ft.turn!==1)return done&&done();
- anim=true;
- const t=ft.tanks[1],start=t.x,target=choosePCSafePosition();
- const distance=Math.abs(target-start),frames=Math.max(12,Math.ceil(distance/5));
- let f=0;
- function roll(){
-   f++;
-   const eased=1-Math.pow(1-f/frames,3);
-   t.x=start+(target-start)*eased;
-   drawFT();
-   if(f<frames)return requestAnimationFrame(roll);
-   t.x=target;
-   ft.ai.recentPositions=([...(ft.ai.recentPositions||[]),Math.round(target)]).slice(-3);
-   ft.ai.lastHit=null;
-   anim=false;
-   syncFT();
-   setTimeout(()=>done&&done(),280);
- }
- roll();
-}
-function simulateImpact(shooter,angle,power){
- const t=ft.tanks[shooter], dir=shooter===0?1:-1;
- let x=t.x,y=terrainY(t.x)-27;
- let vx=dir*Math.cos(angle*Math.PI/180)*(power*.22);
- let vy=-Math.sin(angle*Math.PI/180)*(power*.22);
- for(let i=0;i<520;i++){
-   x+=vx;y+=vy;vy+=.16;
-   if(x<0||x>860||y>terrainY(Math.max(0,Math.min(860,x))))return {x,y};
- }
- return {x,y};
-}
-
-function findAIAim(wantHit){
- const target=ft.tanks[0];
- let best={angle:45,power:55,error:99999};
- for(let a=15;a<=78;a+=2){
-   for(let p=25;p<=90;p+=2){
-     const impact=simulateImpact(1,a,p);
-     const err=Math.abs(impact.x-target.x);
-     if(err<best.error)best={angle:a,power:p,error:err};
-   }
- }
- if(wantHit)return best;
-
- // 명중 예정 전에는 일부러 좌우로 빗나가게 함
- const miss=best.error<60
-   ? {...best,power:Math.max(25,Math.min(90,best.power+(Math.random()<.5?-10:10)))}
-   : best;
- return miss;
-}
-
-function pcFT(){
- if(ft.over||ft.turn!==1)return;
- ft.ai=ft.ai||{shots:0,hitAt:5+Math.floor(Math.random()*6)};
- ft.ai.shots++;
- const wantHit=ft.ai.shots>=ft.ai.hitAt;
- const aim=findAIAim(wantHit);
- ft.tanks[1].angle=aim.angle;
- ft.tanks[1].power=aim.power;
-
- // 명중 후 다음 5~10회 계획 재설정
- if(wantHit){
-   ft.ai.shots=0;
-   ft.ai.hitAt=5+Math.floor(Math.random()*6);
- }
- renderFT();
- setTimeout(()=>fireFT(),400);
-}
-
-function scheduleOnlineFortBot(players,order){
- clearTimeout(fortBotTimer);fortBotTimer=null;
- if(mode!=="online"||!isHost||!ft||ft.over||anim||fortBotBusy)return;
- const ids=Array.isArray(order)&&order.length?order:playerOrderEntries(activePlayers(players||{})).map(([id])=>id);
- const botId=ids[ft.turn];
- if(!botId||!players?.[botId]?.isBot)return;
- fortBotBusy=true;
- fortBotTimer=setTimeout(()=>{
-   try{
-     if(!ft||ft.over||anim||ids[ft.turn]!==botId)return;
-     const shooter=ft.turn,target=1-shooter;
-     let best={angle:45,power:55,error:99999};
-     for(let a=15;a<=78;a+=3){for(let p=25;p<=90;p+=3){const impact=simulateImpact(shooter,a,p);const err=Math.abs(impact.x-ft.tanks[target].x);if(err<best.error)best={angle:a,power:p,error:err}}}
-     const shouldHit=Math.random()<0.42;
-     ft.tanks[shooter].angle=best.angle;
-     ft.tanks[shooter].power=shouldHit?best.power:Math.max(25,Math.min(90,best.power+(Math.random()<.5?-9:9)));
-     renderFT();
-     setTimeout(()=>fireFT(false,true),450);
-   }finally{setTimeout(()=>{fortBotBusy=false},900)}
- },900+Math.floor(Math.random()*900));
-}
-
-$("#fortNext").onclick=()=>{
- const keepWins=[...ft.wins];
- const keepMe=ft.me, nextStarter=ft.nextStarter;
- ft=newFT();ft.terrainId=chosenTerrainId;ft.turn=nextStarter??ft.turn;
- ft.wins=keepWins;
- if(mode==="online")ft.me=keepMe;
- $("#fortNext").classList.add("hidden");
- syncFT();
- if(mode==="solo"&&ft.turn===1)setTimeout(pcFT,500);
-};
-
+function adjustFT(kind,delta){const me=myFTIndex();if(me<0||ft.over||anim||ft.turn!==me)return;const t=ft.tanks[me];if(kind==="x"){const mates=ft.tanks.filter(x=>x.team===t.team);const min=t.team===0?35:465,max=t.team===0?395:825;t.x=Math.max(min,Math.min(max,t.x+delta));for(const m of mates){if(m!==t&&Math.abs(m.x-t.x)<42)t.x+=delta<0?18:-18}}else if(kind==="angle")t.angle=Math.max(10,Math.min(80,t.angle+delta));else t.power=Math.max(20,Math.min(90,t.power+delta));syncFT()}
+function bindHold(id,action){const el=$("#"+id),stop=()=>{clearTimeout(holdDelay);clearInterval(holdTimer);holdDelay=null;holdTimer=null},start=e=>{e.preventDefault();stop();action();holdDelay=setTimeout(()=>{holdTimer=setInterval(action,150)},350)};el.addEventListener("pointerdown",start);["pointerup","pointercancel","pointerleave"].forEach(ev=>el.addEventListener(ev,stop));el.addEventListener("contextmenu",e=>e.preventDefault())}
+bindHold("moveLeft",()=>adjustFT("x",-6));bindHold("moveRight",()=>adjustFT("x",6));bindHold("angleDown",()=>adjustFT("angle",-1));bindHold("angleUp",()=>adjustFT("angle",1));bindHold("powerDown",()=>adjustFT("power",-1));bindHold("powerUp",()=>adjustFT("power",1));$("#fireBtn").onclick=()=>fireFT();
+function syncFT(){renderFT();if(mode==="online"&&roomRef){const out=JSON.parse(JSON.stringify(ft));delete out.me;roomRef.child("state").set(out)}}
+function drawTrajectory(shooter){const p=shotVector(shooter);ctx.save();ctx.fillStyle="#fde047";for(let i=0;i<180;i++){p.x+=p.vx;p.y+=p.vy;p.vy+=.16;if(i%5===0){ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill()}if(p.x<0||p.x>860||p.y>terrainY(Math.max(0,Math.min(860,p.x))))break}ctx.restore()}
+$("#trajectoryBtn").onclick=()=>{const me=myFTIndex();if(me<0)return;if(ft.trajectoryUsed[me])return toast("이번 경기의 궤적 아이템을 이미 사용했습니다.");ft.showTrajectory=!ft.showTrajectory;renderFT()};
+function shotVector(shooter){const t=ft.tanks[shooter],elev=t.angle*Math.PI/180,dir=t.team===0?1:-1,speed=t.power*.22;return{x:t.x,y:terrainY(t.x)-27,vx:dir*Math.cos(elev)*speed,vy:-Math.sin(elev)*speed}}
+function fireFT(forceHit=false,allowBot=false){const shooter=ft.turn,me=myFTIndex();if(ft.over||anim||ft.tanks[shooter]?.hp<=0)return;if(mode!=="solo"&&shooter!==me&&!allowBot)return;anim=true;if(ft.showTrajectory){ft.trajectoryUsed[shooter]=true;ft.showTrajectory=false}const target=chooseTarget(shooter);if(target===null){anim=false;return}const p=shotVector(shooter);let step=0;function tick(){step++;p.x+=p.vx;p.y+=p.vy;p.vy+=.16;drawFT(p);const tt=ft.tanks[target],ty=terrainY(tt.x)-18,hit=Math.hypot(p.x-tt.x,p.y-ty)<25;if(hit)return endShot(shooter,target,true,p.x);if(p.x<0||p.x>860||p.y>terrainY(Math.max(0,Math.min(860,p.x)))||step>520)return endShot(shooter,target,false,p.x);requestAnimationFrame(tick)}tick()}
+function endShot(shooter,target,hit,impactX){anim=false;if(Number.isFinite(impactX)&&impactX>=0&&impactX<=860)ft.craters.push({x:impactX,r:hit?34:26,depth:hit?18:14});if(hit)ft.tanks[target].hp=Math.max(0,ft.tanks[target].hp-35);const shooterTeam=ft.tanks[shooter].team,enemyTeam=1-shooterTeam;if(aliveIndexes(enemyTeam).length===0){ft.wins[shooterTeam]++;ft.roundWinner=shooterTeam;ft.nextStarter=nextAliveTurn(shooter);ft.over=true;$("#fortNext").classList.remove("hidden");if(ft.wins[shooterTeam]>=3){const me=myFTIndex(),mine=me>=0&&ft.tanks[me].team===shooterTeam;if(mine){recordGame("fortress","win");if(mode==="online")finishOnline("fortress",playerId)}else recordGame("fortress","loss");$("#fortStatus").textContent="최종 경기 종료 · 3승 달성";showResult(mine?"🏆 포트리스 승리":"포트리스 패배",`A팀 ${ft.wins[0]} : ${ft.wins[1]} B팀`,"다시 대전하기",mode==="online"?"방에서 나가기":"게임 종료");$("#resultRetry").onclick=()=>requestRematch("fortress");$("#resultExit").onclick=()=>{hideResult();leave()}}else $("#fortStatus").textContent=`${shooterTeam===0?"A팀":"B팀"} 승리 · 다음 판`;syncFT();return}ft.turn=nextAliveTurn(shooter);syncFT();if(mode==="solo"&&ft.turn===1)setTimeout(pcFT,600)}
+function simulateImpact(shooter,angle,power){const t=ft.tanks[shooter],dir=t.team===0?1:-1;let x=t.x,y=terrainY(t.x)-27,vx=dir*Math.cos(angle*Math.PI/180)*(power*.22),vy=-Math.sin(angle*Math.PI/180)*(power*.22);for(let i=0;i<520;i++){x+=vx;y+=vy;vy+=.16;if(x<0||x>860||y>terrainY(Math.max(0,Math.min(860,x))))return{x,y}}return{x,y}}
+function findAim(shooter,target,wantHit){let best={angle:45,power:55,error:99999};for(let a=15;a<=78;a+=2)for(let p=25;p<=90;p+=2){const impact=simulateImpact(shooter,a,p),err=Math.abs(impact.x-ft.tanks[target].x);if(err<best.error)best={angle:a,power:p,error:err}}if(wantHit)return best;return{...best,power:Math.max(25,Math.min(90,best.power+(Math.random()<.5?-8-Math.random()*9:8+Math.random()*9)))}}
+function pcFT(){if(ft.over||ft.turn!==1)return;const target=chooseTarget(1),aim=findAim(1,target,Math.random()<.55);ft.tanks[1].angle=aim.angle;ft.tanks[1].power=aim.power;renderFT();setTimeout(()=>fireFT(false,true),450)}
+function scheduleOnlineFortBot(players,order){clearTimeout(fortBotTimer);fortBotTimer=null;if(mode!=="online"||!isHost||!ft||ft.over||anim||fortBotBusy)return;const shooter=ft.turn,tank=ft.tanks[shooter];if(!tank?.isBot||tank.hp<=0)return;fortBotBusy=true;const profile=tank.botProfile||randomBotProfile();fortBotTimer=setTimeout(()=>{try{if(!ft||ft.over||anim||ft.turn!==shooter)return;const target=chooseTarget(shooter);if(target===null)return;const aim=findAim(shooter,target,Math.random()<profile.accuracy);ft.tanks[shooter].angle=aim.angle;ft.tanks[shooter].power=aim.power;renderFT();setTimeout(()=>fireFT(false,true),380)}finally{setTimeout(()=>{fortBotBusy=false;scheduleOnlineFortBot(players,order)},1000)}},profile.delay)}
+$("#fortNext").onclick=()=>{if(mode==="online"&&!isHost)return toast("방장이 다음 판을 시작합니다.");const roster=ft.tanks.map(t=>({id:t.id,name:t.name,isBot:t.isBot,team:t.team})),keepWins=[...ft.wins],starter=ft.nextStarter??0;ft=newFT(roster);ft.wins=keepWins;ft.turn=Math.min(starter,ft.tanks.length-1);ft.terrainId=chosenTerrainId;$("#fortNext").classList.add("hidden");syncFT();if(mode==="solo"&&ft.turn===1)setTimeout(pcFT,500)};
 async function setupFortOnline(){
- const roomSnap=await roomRef.once("value"),roomData=roomSnap.val()||{};
- const ps=activePlayers(roomData.players||{});
- const ids=(roomData.playOrder||playerOrderEntries(ps).map(([id])=>id)).filter(id=>ps[id]).slice(0,2);
- const me=ids.indexOf(playerId);
- if(isHost){
-   ft.me=Math.max(0,me);ft.terrainId=chosenTerrainId;
-   await roomRef.child("state").set(ft);
- }else ft.me=me;
-
- const stateRef=roomRef.child("state");
- const cb=s=>{
-   const st=s.val();
-   if(!st)return;
-   st.me=me;chosenTerrainId=st.terrainId||chosenTerrainId;
-   ft=st;
-   renderFT();
-   if((st.wins?.[0]||0)==0&&(st.wins?.[1]||0)==0&&st.tanks?.every(t=>t.hp===100))$("#fortStatus").textContent=(st.turn===me?"내가":"상대가")+" 먼저 시작합니다.";
-   scheduleOnlineFortBot(ps,ids);
- };
- const rematchRef=roomRef.child("rematch");
- const rematchCb=async snap=>{const r=snap.val()||{};if(Object.keys(r).length<2||!isHost)return;await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null,state:null,terrainResult:null,terrainChoices:null});hideResult();startTerrainSelection()};
- rematchRef.on("value",rematchCb);
- stateRef.on("value",cb);
- unsub=()=>{stateRef.off("value",cb);rematchRef.off("value",rematchCb)};
+ const roomSnap=await roomRef.once("value"),roomData=roomSnap.val()||{},ps=activePlayers(roomData.players||{});let ids=(roomData.playOrder||playerOrderEntries(ps).map(([id])=>id)).filter(id=>ps[id]).slice(0,4);if(ids.length<2){toast("포트리스는 2명 이상 필요합니다.");return openLobby("fortress")}
+ const roster=buildFortRoster(ids,ps),me=ids.indexOf(playerId),stateRef=roomRef.child("state");if(isHost){ft=newFT(roster);ft.terrainId=chosenTerrainId;await stateRef.set(ft)}
+ const cb=s=>{const st=s.val();if(!st)return;st.me=me;chosenTerrainId=st.terrainId||chosenTerrainId;ft=st;renderFT();if((st.wins?.[0]||0)===0&&(st.wins?.[1]||0)===0&&st.tanks?.every(t=>t.hp===100))$("#fortStatus").textContent=(st.turn===me?"내가":`${st.tanks[st.turn]?.name||"상대"}가`)+" 먼저 시작합니다.";scheduleOnlineFortBot(ps,ids)};
+ const rematchRef=roomRef.child("rematch"),rematchCb=async snap=>{const r=snap.val()||{},required=Object.keys(activePlayers((await roomRef.child("players").once("value")).val()||{})).length;if(Object.keys(r).length<required||!isHost)return;await roomRef.update({status:"playing",winner:null,finishedAt:null,rematch:null,state:null,terrainResult:null,terrainChoices:null});hideResult();startTerrainSelection()};rematchRef.on("value",rematchCb);stateRef.on("value",cb);unsub=()=>{stateRef.off("value",cb);rematchRef.off("value",rematchCb)}
 }
-
-can.addEventListener("dblclick",e=>e.preventDefault());
-document.addEventListener("gesturestart",e=>e.preventDefault());
+can.addEventListener("dblclick",e=>e.preventDefault());document.addEventListener("gesturestart",e=>e.preventDefault());
 
 /* Hall */
 async function finishOnline(kind,winner){
