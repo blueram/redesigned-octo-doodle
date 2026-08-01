@@ -349,9 +349,37 @@ function getChoHints(word){
  return smartChoHint(word);
 }
 
+
+function renderChoLetters(text){
+ const box=$("#choQ");
+ if(!box)return;
+ box.innerHTML=[...String(text||"")].map(ch=>`<span class="cho-letter">${esc(ch)}</span>`).join("");
+}
+function resetChoHintRows(){
+ document.querySelectorAll("#choHintSteps .cho-hint-row").forEach((row,i)=>{
+   row.classList.remove("active","revealed");
+   row.querySelector(".cho-hint-text").textContent="잠시 후 공개됩니다";
+   row.querySelector(".cho-hint-lock").textContent="🔒";
+ });
+}
+function revealChoHintRow(index,text){
+ const rows=document.querySelectorAll("#choHintSteps .cho-hint-row");
+ rows.forEach((row,i)=>row.classList.toggle("active",i===index));
+ const row=rows[index];if(!row)return;
+ row.classList.add("revealed");
+ row.querySelector(".cho-hint-text").textContent=text||"";
+ row.querySelector(".cho-hint-lock").textContent="💡";
+}
+function focusChoAnswer(forceKeyboard=false){
+ const input=$("#choAnswer");if(!input||input.disabled)return;
+ try{input.focus({preventScroll:true});}catch(e){input.focus();}
+ const len=input.value.length;try{input.setSelectionRange(len,len)}catch(e){}
+ if(forceKeyboard)setChoKeyboardMode(true);
+}
 function startChoHints(word,onTimeout){
  clearChoHintTimers();
  const hints=getChoHints(word);
+ resetChoHintRows();
  $("#choCategory").textContent=hints[0]||"일상 단어";
  let step=0,thirdHintShows=0,finished=false;
 
@@ -360,6 +388,7 @@ function startChoHints(word,onTimeout){
    const idx=Math.min(step,2);
    if(idx===2)thirdHintShows++;
    $("#choHint").innerHTML=`<b>${idx+1}단계 힌트${idx===2?` · ${thirdHintShows}/3`:""}</b><span>${esc(hints[idx])}</span>`;
+   revealChoHintRow(idx,hints[idx]);
    step++;
    if(idx===2&&thirdHintShows>=3){
      finished=true;
@@ -392,19 +421,21 @@ async function timeoutChoOnline(round,answer){
 }
 
 function startChosung(){
- screen("chosung");clearChoHintTimers();clearTimeout(choAdvanceTimer);choAdvanceTimer=null;choAdvancing=false;choOnlineRoundKey="";choIdx=0;choScores={};choStart=performance.now();$("#choMode").textContent=mode==="solo"?"혼자":"온라인 · 최대 4명";$("#choWinner").classList.remove("show");$("#choWinner").textContent="";
+ screen("chosung");
+ // 사용자의 시작 동작 직후 즉시 포커스를 주어 모바일 키보드가 함께 열리도록 시도한다.
+ focusChoAnswer(true);clearChoHintTimers();clearTimeout(choAdvanceTimer);choAdvanceTimer=null;choAdvancing=false;choOnlineRoundKey="";choIdx=0;choScores={};choStart=performance.now();$("#choMode").textContent=mode==="solo"?"혼자":"온라인 · 최대 4명";$("#choWinner").classList.remove("show");$("#choWinner").textContent="";
  if(mode==="solo"){$("#choScores").innerHTML=`<div class="cho-rank-item me"><b>👤 ${esc(nickname)}</b><span class="pts"><span id="choSoloScore">0</span> / 10</span></div>`;choList=shuffleWords().slice(0,10);nextCho();choTimer=setInterval(()=>$("#choTime").textContent=((performance.now()-choStart)/1000).toFixed(1)+"초",100)}
  else {choTimer=setInterval(()=>$("#choTime").textContent=((performance.now()-choStart)/1000).toFixed(1)+"초",100);setupChoOnline();}
 }
 function nextCho(){
  if(choIdx>=choList.length)return finishChoSolo();
  const w=choList[choIdx];
- $("#choQ").textContent=toCho(w);
+ renderChoLetters(toCho(w));
  $("#choRound").textContent=`${choIdx+1} / ${choList.length}`;
  $("#choProgress").style.width=(choIdx/choList.length*100)+"%";const soloScore=$("#choSoloScore");if(soloScore)soloScore.textContent=choIdx;
  $("#choAnswer").value="";$("#choAnswer").disabled=false;$("#choSubmit").disabled=false;$("#choWinner").classList.remove("show");
  startChoHints(w,timeoutChoSolo);
- $("#choAnswer").focus();
+ focusChoAnswer(true);
 }
 function submitCho(){
  const input=$("#choAnswer");
@@ -434,6 +465,8 @@ function submitCho(){
  }
 }
 $("#choSubmit").onclick=submitCho;$("#choAnswer").onkeydown=e=>{if(e.key==="Enter")submitCho()};
+$("#choFocusBtn").onclick=()=>focusChoAnswer(true);
+$("#choRefocusBtn").onclick=()=>{focusChoAnswer(true);positionChoForKeyboard()};
 const choInput=$("#choAnswer");
 function positionChoForKeyboard(){
  const card=$("#choCard"), input=$("#choAnswer");
@@ -467,7 +500,7 @@ if(window.visualViewport){
   if(window.visualViewport.height>baseHeight)baseHeight=window.visualViewport.height;
  });
 }
-function finishChoSolo(){clearInterval(choTimer);clearChoHintTimers();let t=(performance.now()-choStart)/1000;$("#choProgress").style.width="100%";$("#choQ").textContent="완료!";$("#choHint").textContent=`10문제 ${t.toFixed(1)}초`;if(!stats.chosungBest||t<stats.chosungBest)stats.chosungBest=t;recordGame("chosung","win",t);showResult("🎉 10문제 완료",`기록 <b>${t.toFixed(1)}초</b>`);$("#resultRetry").onclick=()=>{hideResult();startChosung()};$("#resultExit").onclick=()=>{hideResult();leave()}}
+function finishChoSolo(){clearInterval(choTimer);clearChoHintTimers();let t=(performance.now()-choStart)/1000;$("#choProgress").style.width="100%";$("#choQ").innerHTML=`<span class="cho-letter" style="width:auto;padding:0 18px">완료!</span>`;$("#choHint").textContent=`10문제 ${t.toFixed(1)}초`;if(!stats.chosungBest||t<stats.chosungBest)stats.chosungBest=t;recordGame("chosung","win",t);showResult("🎉 10문제 완료",`기록 <b>${t.toFixed(1)}초</b>`);$("#resultRetry").onclick=()=>{hideResult();startChosung()};$("#resultExit").onclick=()=>{hideResult();leave()}}
 async function setupChoOnline(){
  const stateRef=roomRef.child("state");
 
@@ -508,11 +541,11 @@ async function setupChoOnline(){
    if(roundKey!==choOnlineRoundKey){
      choOnlineRoundKey=roundKey;
      clearChoHintTimers();
-     $("#choQ").textContent=toCho(st.word);
+     renderChoLetters(toCho(st.word));
      $("#choRound").textContent=`${st.round||1} 라운드`;
      $("#choAnswer").value="";$("#choAnswer").disabled=false;$("#choSubmit").disabled=false;$("#choWinner").classList.remove("show");$("#choWinner").textContent="";
      startChoHints(st.word,()=>timeoutChoOnline(st.round,st.answer));
-     $("#choAnswer").focus();
+     focusChoAnswer(true);
      clearTimeout(botActionTimer);botActionTimer=null;
      if(TEST_MODE&&isHost){
        // 참가자 목록 조회가 끝나기 전에 봇 예약이 실행되던 문제를 방지한다.
