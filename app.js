@@ -515,19 +515,30 @@ async function setupChoOnline(){
      $("#choAnswer").focus();
      clearTimeout(botActionTimer);botActionTimer=null;
      if(TEST_MODE&&isHost){
-       const bots=playerOrderEntries(choPlayers).filter(([,p])=>p.isBot);
-       if(bots.length){
+       // 참가자 목록 조회가 끝나기 전에 봇 예약이 실행되던 문제를 방지한다.
+       // 현재 방의 참가자를 Firebase에서 직접 읽은 뒤 해당 라운드의 봇 동작을 예약한다.
+       const scheduledRoundToken=st.roundToken;
+       roomRef.child("players").once("value").then(playerSnap=>{
+         const latestPlayers=activePlayers(playerSnap.val()||{});
+         choPlayers=latestPlayers;
+         const bots=playerOrderEntries(latestPlayers).filter(([,p])=>p.isBot);
+         if(!bots.length||choOnlineRoundKey!==roundKey)return;
          const [botId]=bots[Math.floor(Math.random()*bots.length)];
+         clearTimeout(botActionTimer);
          botActionTimer=setTimeout(async()=>{
            const ref=roomRef.child("state");
            await ref.transaction(cur=>{
-             if(!cur||cur.type!=="chosung"||cur.roundToken!==st.roundToken||cur.roundWinner||cur.timedOut)return cur;
+             if(!cur||cur.type!=="chosung"||cur.roundToken!==scheduledRoundToken||cur.roundWinner||cur.timedOut)return cur;
              const correct=Math.random()<0.72;
              if(!correct){cur.lastBotAttempt={botId,answer:"오답",at:Date.now()};return cur;}
-             cur.scores=cur.scores||{};cur.scores[botId]=(cur.scores[botId]||0)+1;cur.roundWinner=botId;cur.answeredAt=Date.now();return cur;
+             cur.scores=cur.scores||{};
+             cur.scores[botId]=(cur.scores[botId]||0)+1;
+             cur.roundWinner=botId;
+             cur.answeredAt=Date.now();
+             return cur;
            });
          },1800+Math.floor(Math.random()*2600));
-       }
+       }).catch(e=>console.warn("테스트 봇 예약 실패",e));
      }
    }
 
